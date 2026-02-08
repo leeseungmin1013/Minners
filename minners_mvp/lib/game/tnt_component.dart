@@ -1,22 +1,22 @@
-import 'dart:ui';
-
 import 'package:flame/components.dart';
+import 'package:flutter/painting.dart';
 
 import 'tile_data.dart';
 import 'inventory.dart';
 import 'mining_game.dart';
 
-class TntComponent extends RectangleComponent
+class TntComponent extends SpriteComponent
     with HasGameReference<MiningGame> {
   double timer = 3.0;
   static const int blastRadius = 4;
   static const int blastDamage = 30;
 
-  TntComponent({required Vector2 position})
+  TntComponent({required Vector2 position, required Sprite sprite})
       : super(
           position: position,
           size: Vector2.all(tileSize),
-          paint: Paint()..color = const Color(0xFFFF2222),
+          sprite: sprite,
+          paint: Paint()..color = const Color(0xFFFFFFFF),
         );
 
   @override
@@ -28,7 +28,7 @@ class TntComponent extends RectangleComponent
     if (timer < 1.5) {
       final flash = (timer * 8).floor() % 2 == 0;
       paint.color =
-          flash ? const Color(0xFFFF2222) : const Color(0xFFFFFF00);
+          flash ? const Color(0xFFFFFFFF) : const Color(0xFFFFFF66);
     }
 
     if (timer <= 0) {
@@ -65,5 +65,19 @@ class TntComponent extends RectangleComponent
     if (pc.distanceTo(tc) < blastRadius * tileSize) {
       game.gameState.takeDamage(blastDamage);
     }
+
+    // Explosion visual effect
+    final explosionSize = blastRadius * 2.0 * tileSize;
+    final anim = game.buildExplosionAnimation();
+    final explosion = SpriteAnimationComponent(
+      animation: anim,
+      position: Vector2(
+        position.x + tileSize / 2 - explosionSize / 2,
+        position.y + tileSize / 2 - explosionSize / 2,
+      ),
+      size: Vector2.all(explosionSize),
+      priority: 15,
+    )..removeOnFinish = true;
+    game.gameCamera.world?.add(explosion);
   }
 }

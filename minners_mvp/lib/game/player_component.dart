@@ -7,7 +7,7 @@ import 'mining_game.dart';
 
 enum FacingDir { left, right, up, down }
 
-class PlayerComponent extends RectangleComponent
+class PlayerComponent extends SpriteComponent
     with HasGameReference<MiningGame> {
   final Vector2 velocity = Vector2.zero();
   double _moveInput = 0;
@@ -40,11 +40,12 @@ class PlayerComponent extends RectangleComponent
   int get depth => ((y / tileSize).floor() - skyRows).clamp(0, worldHeight);
   bool get isAtSurface => depth <= 2;
 
-  PlayerComponent({required Vector2 position})
+  PlayerComponent({required Vector2 position, required Sprite sprite})
       : super(
           position: position,
-          size: Vector2(22, 28),
-          paint: Paint()..color = const Color(0xFF4CC9F0),
+          size: Vector2.all(tileSize),
+          sprite: sprite,
+          paint: Paint()..color = const Color(0xFFFFFFFF),
         );
 
   void setMoveInput(double v) {
@@ -91,7 +92,7 @@ class PlayerComponent extends RectangleComponent
 
     // Reset colour when not thrusting
     if (!jumpHeld || _onGround || !gs.hasJetpack || gs.jetpackFuel <= 0) {
-      paint.color = const Color(0xFF4CC9F0);
+      paint.color = const Color(0xFFFFFFFF);
     }
 
     _step(dt, horizontal: true);

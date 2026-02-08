@@ -5,12 +5,14 @@ import 'tile_data.dart';
 
 // ── Item types ─────────────────────────────────────────────────────────────
 enum ItemType {
+  grassBlock,
   dirtBlock,
   stoneBlock,
   copperOre,
   ironOre,
   goldOre,
   diamondOre,
+  bedrockBlock,
   tnt,
   teleportGen,
 }
@@ -32,6 +34,13 @@ class ItemSpec {
 }
 
 const Map<ItemType, ItemSpec> itemSpecs = {
+  ItemType.grassBlock: ItemSpec(
+    name: 'Grass',
+    color: Color(0xFF4CAF50),
+    sellValue: 1,
+    isPlaceable: true,
+    tileType: TileType.grass,
+  ),
   ItemType.dirtBlock: ItemSpec(
     name: 'Dirt',
     color: Color(0xFF8B5A2B),
@@ -66,6 +75,13 @@ const Map<ItemType, ItemSpec> itemSpecs = {
     color: Color(0xFF00E5FF),
     sellValue: 50,
   ),
+  ItemType.bedrockBlock: ItemSpec(
+    name: 'Bedrock',
+    color: Color(0xFF1A1A2E),
+    sellValue: 500,
+    isPlaceable: true,
+    tileType: TileType.bedrock,
+  ),
   ItemType.tnt: ItemSpec(
     name: 'TNT',
     color: Color(0xFFFF2222),
@@ -78,10 +94,24 @@ const Map<ItemType, ItemSpec> itemSpecs = {
   ),
 };
 
+const Map<ItemType, String> itemIconPaths = {
+  ItemType.grassBlock: 'assets/images/items/block_grass.png',
+  ItemType.dirtBlock: 'assets/images/items/block_dirt.png',
+  ItemType.stoneBlock: 'assets/images/items/block_stone.png',
+  ItemType.copperOre: 'assets/images/items/block_copper.png',
+  ItemType.ironOre: 'assets/images/items/block_iron.png',
+  ItemType.goldOre: 'assets/images/items/block_gold.png',
+  ItemType.diamondOre: 'assets/images/items/block_diamond.png',
+  ItemType.bedrockBlock: 'assets/images/items/block_bedrock.png',
+  ItemType.tnt: 'assets/images/items/tnt.png',
+  ItemType.teleportGen: 'assets/images/items/teleport.png',
+};
+
 /// What item drops when a tile is mined.
 ItemType? tileDropItem(TileType tile) {
   switch (tile) {
     case TileType.grass:
+      return ItemType.grassBlock;
     case TileType.dirt:
       return ItemType.dirtBlock;
     case TileType.stone:

@@ -122,59 +122,48 @@ class _InventoryOverlayState extends State<InventoryOverlay> {
     final isHotbar = globalIndex < hotbarCount;
     final isSelected = isHotbar && globalIndex == _inv.selected;
 
+    final slotImg = (picked || isSelected)
+        ? 'assets/images/ui/hotbar_selected.png'
+        : 'assets/images/ui/hotbar_slot.png';
+
     return GestureDetector(
       onTap: () => _onSlotTap(globalIndex),
       child: Container(
         width: 40,
         height: 40,
         margin: const EdgeInsets.all(1),
-        decoration: BoxDecoration(
-          color: picked
-              ? const Color(0xFF444400)
-              : const Color(0xFF2A2A2A),
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(
-            color: picked
-                ? const Color(0xFFFFFF00)
-                : isSelected
-                    ? const Color(0xFFFFD700)
-                    : const Color(0xFF444444),
-            width: picked || isSelected ? 2 : 1,
-          ),
-        ),
-        child: slot.isEmpty
-            ? const SizedBox.shrink()
-            : Stack(
-                children: [
-                  Center(
-                    child: Container(
-                      width: 24,
-                      height: 24,
-                      decoration: BoxDecoration(
-                        color: itemSpecs[slot.type!]?.color ??
-                            const Color(0xFF888888),
-                        borderRadius: BorderRadius.circular(3),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    right: 2,
-                    bottom: 1,
-                    child: Text(
-                      '${slot.count}',
-                      style: const TextStyle(
-                        fontSize: 9,
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        decoration: TextDecoration.none,
-                        shadows: [
-                          Shadow(offset: Offset(1, 1), blurRadius: 1),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
+        child: Stack(
+          children: [
+            Image.asset(
+              slotImg,
+              width: 40,
+              height: 40,
+              filterQuality: FilterQuality.none,
+              fit: BoxFit.fill,
+            ),
+            if (!slot.isEmpty) ...[
+              Center(
+                child: _slotIcon(slot.type!, 24),
               ),
+              Positioned(
+                right: 2,
+                bottom: 1,
+                child: Text(
+                  '${slot.count}',
+                  style: const TextStyle(
+                    fontSize: 9,
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    decoration: TextDecoration.none,
+                    shadows: [
+                      Shadow(offset: Offset(1, 1), blurRadius: 1),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -223,14 +212,7 @@ class _InventoryOverlayState extends State<InventoryOverlay> {
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
         children: [
-          Container(
-            width: 16,
-            height: 16,
-            decoration: BoxDecoration(
-              color: spec.color,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
+          _slotIcon(type, 16),
           const SizedBox(width: 6),
           SizedBox(
             width: 80,
@@ -310,6 +292,7 @@ class _InventoryOverlayState extends State<InventoryOverlay> {
         _sectionLabel('Buy Items'),
         _buildBuyItemRow(ItemType.tnt, 100),
         _buildBuyItemRow(ItemType.teleportGen, 500),
+        _buildBuyItemRow(ItemType.bedrockBlock, 1000),
         const SizedBox(height: 6),
 
         // Heal
@@ -329,13 +312,11 @@ class _InventoryOverlayState extends State<InventoryOverlay> {
       padding: const EdgeInsets.symmetric(vertical: 1),
       child: Row(
         children: [
-          Container(
-            width: 12,
-            height: 12,
-            decoration: BoxDecoration(
-              color: spec.color,
-              borderRadius: BorderRadius.circular(2),
-            ),
+          Image.asset(
+            pickaxeIconPaths[tier]!,
+            width: 16,
+            height: 16,
+            filterQuality: FilterQuality.none,
           ),
           const SizedBox(width: 6),
           Expanded(
@@ -383,13 +364,11 @@ class _InventoryOverlayState extends State<InventoryOverlay> {
         padding: const EdgeInsets.symmetric(vertical: 2),
         child: Row(
           children: [
-            Container(
-              width: 12,
-              height: 12,
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFAA44),
-                borderRadius: BorderRadius.circular(2),
-              ),
+            Image.asset(
+              'assets/images/items/jetpack.png',
+              width: 16,
+              height: 16,
+              filterQuality: FilterQuality.none,
             ),
             const SizedBox(width: 6),
             const Expanded(
@@ -411,13 +390,11 @@ class _InventoryOverlayState extends State<InventoryOverlay> {
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
         children: [
-          Container(
-            width: 12,
-            height: 12,
-            decoration: BoxDecoration(
-              color: const Color(0xFFFFAA44),
-              borderRadius: BorderRadius.circular(2),
-            ),
+          Image.asset(
+            'assets/images/items/jetpack.png',
+            width: 16,
+            height: 16,
+            filterQuality: FilterQuality.none,
           ),
           const SizedBox(width: 6),
           const Expanded(
@@ -458,9 +435,16 @@ class _InventoryOverlayState extends State<InventoryOverlay> {
     final missing = (max - fuel).ceil();
     if (missing <= 0) {
       return Padding(
-        padding: const EdgeInsets.only(left: 18, bottom: 4),
+        padding: const EdgeInsets.only(left: 4, bottom: 4),
         child: Row(
           children: [
+            Image.asset(
+              'assets/images/items/fuel.png',
+              width: 12,
+              height: 12,
+              filterQuality: FilterQuality.none,
+            ),
+            const SizedBox(width: 4),
             Expanded(
               child: Text(
                 'Fuel: ${fuel.round()} / ${max.round()} (FULL)',
@@ -478,9 +462,16 @@ class _InventoryOverlayState extends State<InventoryOverlay> {
 
     final canBuy = _gs.gold >= missing;
     return Padding(
-      padding: const EdgeInsets.only(left: 18, bottom: 4),
+      padding: const EdgeInsets.only(left: 4, bottom: 4),
       child: Row(
         children: [
+          Image.asset(
+            'assets/images/items/fuel.png',
+            width: 12,
+            height: 12,
+            filterQuality: FilterQuality.none,
+          ),
+          const SizedBox(width: 4),
           Expanded(
             child: Text(
               'Fuel: ${fuel.round()} / ${max.round()}',
@@ -518,14 +509,7 @@ class _InventoryOverlayState extends State<InventoryOverlay> {
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
         children: [
-          Container(
-            width: 14,
-            height: 14,
-            decoration: BoxDecoration(
-              color: spec.color,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
+          _slotIcon(type, 16),
           const SizedBox(width: 6),
           Expanded(
             child: Text(
@@ -681,4 +665,24 @@ class _InventoryOverlayState extends State<InventoryOverlay> {
                 decoration: TextDecoration.none,
                 fontWeight: FontWeight.normal)),
       );
+
+  Widget _slotIcon(ItemType type, double size) {
+    final path = itemIconPaths[type];
+    if (path == null) {
+      return Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: itemSpecs[type]?.color ?? const Color(0xFF888888),
+          borderRadius: BorderRadius.circular(3),
+        ),
+      );
+    }
+    return Image.asset(
+      path,
+      width: size,
+      height: size,
+      filterQuality: FilterQuality.none,
+    );
+  }
 }

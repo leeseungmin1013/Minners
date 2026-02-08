@@ -149,6 +149,18 @@ const Map<PickaxeTier, PickaxeSpec> pickaxeSpecs = {
   ),
 };
 
+// ── Pickaxe icon paths ────────────────────────────────────────────────────
+const Map<PickaxeTier, String> pickaxeIconPaths = {
+  PickaxeTier.wood: 'assets/images/items/pickaxe_wood.png',
+  PickaxeTier.stone: 'assets/images/items/pickaxe_stone.png',
+  PickaxeTier.iron: 'assets/images/items/pickaxe_iron.png',
+  PickaxeTier.gold: 'assets/images/items/pickaxe_gold.png',
+  PickaxeTier.diamond: 'assets/images/items/pickaxe_diamond.png',
+  PickaxeTier.drillMk1: 'assets/images/items/drill_mk1.png',
+  PickaxeTier.drillMk2: 'assets/images/items/drill_mk2.png',
+  PickaxeTier.drillMk3: 'assets/images/items/drill_mk3.png',
+};
+
 // ── Helper: position-based noise ───────────────────────────────────────────
 double tileNoise(int x, int y, [int seed = 0]) {
   var n = (x + seed) * 73856093 ^ (y + seed) * 19349663;

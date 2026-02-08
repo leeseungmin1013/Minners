@@ -12,6 +12,7 @@ import 'tile_data.dart';
 import 'game_state.dart';
 import 'inventory.dart';
 import 'player_component.dart';
+import 'tile_component.dart';
 import 'world_manager.dart';
 import 'hud_component.dart';
 import 'tnt_component.dart';
@@ -125,6 +126,10 @@ class MiningGame extends FlameGame with TapCallbacks {
   late final _FacingOutline _facingOutline;
   JoystickComponent? _joystick;
   HudComponent? _hud;
+  late final Sprite _playerSprite;
+  late final Sprite _tntSprite;
+  late final List<Sprite> _portalFrames;
+  late final List<Sprite> _explosionFrames;
 
   double _kbAxis = 0;
   bool _loaded = false;
@@ -155,6 +160,71 @@ class MiningGame extends FlameGame with TapCallbacks {
     await super.onLoad();
     HardwareKeyboard.instance.addHandler(_handleKey);
 
+    await images.loadAll([
+      'tiles/grass.png',
+      'tiles/dirt.png',
+      'tiles/stone.png',
+      'tiles/copper.png',
+      'tiles/iron.png',
+      'tiles/gold.png',
+      'tiles/diamond.png',
+      'tiles/bedrock.png',
+      'tiles/crack_1.png',
+      'tiles/crack_2.png',
+      'tiles/crack_3.png',
+      'tiles/crack_4.png',
+      'player/player.png',
+      'objects/tnt.png',
+      'objects/portal_0.png',
+      'objects/portal_1.png',
+      'objects/portal_2.png',
+      'objects/portal_3.png',
+      'objects/explosion_0.png',
+      'objects/explosion_1.png',
+      'objects/explosion_2.png',
+      'objects/explosion_3.png',
+      'backgrounds/sky.png',
+      'backgrounds/underground_1.png',
+      'backgrounds/underground_2.png',
+      'backgrounds/underground_3.png',
+    ]);
+
+    final tileSprites = <TileType, Sprite>{
+      TileType.grass: Sprite(images.fromCache('tiles/grass.png')),
+      TileType.dirt: Sprite(images.fromCache('tiles/dirt.png')),
+      TileType.stone: Sprite(images.fromCache('tiles/stone.png')),
+      TileType.copper: Sprite(images.fromCache('tiles/copper.png')),
+      TileType.iron: Sprite(images.fromCache('tiles/iron.png')),
+      TileType.gold: Sprite(images.fromCache('tiles/gold.png')),
+      TileType.diamond: Sprite(images.fromCache('tiles/diamond.png')),
+      TileType.bedrock: Sprite(images.fromCache('tiles/bedrock.png')),
+    };
+
+    TileComponent.configure(
+      tileSprites: tileSprites,
+      crackSprites: [
+        Sprite(images.fromCache('tiles/crack_1.png')),
+        Sprite(images.fromCache('tiles/crack_2.png')),
+        Sprite(images.fromCache('tiles/crack_3.png')),
+        Sprite(images.fromCache('tiles/crack_4.png')),
+      ],
+    );
+
+    _playerSprite = Sprite(images.fromCache('player/player.png'));
+    _tntSprite = Sprite(images.fromCache('objects/tnt.png'));
+    _portalFrames = [
+      Sprite(images.fromCache('objects/portal_0.png')),
+      Sprite(images.fromCache('objects/portal_1.png')),
+      Sprite(images.fromCache('objects/portal_2.png')),
+      Sprite(images.fromCache('objects/portal_3.png')),
+    ];
+    _explosionFrames = [
+      Sprite(images.fromCache('objects/explosion_0.png')),
+      Sprite(images.fromCache('objects/explosion_1.png')),
+      Sprite(images.fromCache('objects/explosion_2.png')),
+      Sprite(images.fromCache('objects/explosion_3.png')),
+    ];
+
     final gameWorld = World();
     gameCamera = CameraComponent.withFixedResolution(
       world: gameWorld,
@@ -163,15 +233,35 @@ class MiningGame extends FlameGame with TapCallbacks {
     );
     addAll([gameWorld, gameCamera]);
 
-    // Sky
+    // Sky background
     gameWorld.add(
-      RectangleComponent(
+      SpriteComponent(
+        sprite: Sprite(images.fromCache('backgrounds/sky.png')),
         position: Vector2.zero(),
         size: Vector2(worldWidth * tileSize, skyRows * tileSize),
-        paint: Paint()..color = const Color(0xFF87CEEB),
         priority: -1,
       ),
     );
+
+    // Underground backgrounds (3 depth zones)
+    const zone1Rows = 65; // shallow: rows 5–69
+    const zone2Rows = 65; // medium:  rows 70–134
+    final zone3Rows = worldHeight - skyRows - zone1Rows - zone2Rows; // deep: rest
+    final bgZones = <(String, int, int)>[
+      ('backgrounds/underground_1.png', skyRows, zone1Rows),
+      ('backgrounds/underground_2.png', skyRows + zone1Rows, zone2Rows),
+      ('backgrounds/underground_3.png', skyRows + zone1Rows + zone2Rows, zone3Rows),
+    ];
+    for (final (path, startRow, rows) in bgZones) {
+      gameWorld.add(
+        SpriteComponent(
+          sprite: Sprite(images.fromCache(path)),
+          position: Vector2(0, startRow * tileSize),
+          size: Vector2(worldWidth * tileSize, rows * tileSize),
+          priority: -2,
+        ),
+      );
+    }
 
     // World
     worldManager = WorldManager(world: gameWorld);
@@ -183,6 +273,7 @@ class MiningGame extends FlameGame with TapCallbacks {
         worldWidth * tileSize / 2,
         (skyRows - 2) * tileSize.toDouble(),
       ),
+      sprite: _playerSprite,
     );
     gameWorld.add(player);
 
@@ -550,14 +641,34 @@ class MiningGame extends FlameGame with TapCallbacks {
 
   bool _placeTnt(int x, int y) {
     final pos = Vector2(x * tileSize, y * tileSize);
-    gameCamera.world?.add(TntComponent(position: pos));
+    gameCamera.world?.add(TntComponent(position: pos, sprite: _tntSprite));
     inventory.removeFromSelected(1);
     return true;
   }
 
+  SpriteAnimation buildExplosionAnimation() {
+    return SpriteAnimation.spriteList(
+      _explosionFrames,
+      stepTime: 0.1,
+      loop: false,
+    );
+  }
+
+  SpriteAnimation _buildPortalAnimation() {
+    return SpriteAnimation.spriteList(
+      _portalFrames,
+      stepTime: 0.15,
+      loop: true,
+    );
+  }
+
   bool _placeTeleportDoor(int x, int y) {
     final pos = Vector2(x * tileSize, y * tileSize);
-    final door = TeleportDoor(position: pos, id: _nextDoorId++);
+    final door = TeleportDoor(
+      position: pos,
+      id: _nextDoorId++,
+      animation: _buildPortalAnimation(),
+    );
     doors.add(door);
     gameCamera.world?.add(door);
     inventory.removeFromSelected(1);

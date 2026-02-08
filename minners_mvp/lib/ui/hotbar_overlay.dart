@@ -47,48 +47,61 @@ class HotbarOverlay extends StatelessWidget {
         width: 38,
         height: 38,
         margin: const EdgeInsets.symmetric(horizontal: 1),
-        decoration: BoxDecoration(
-          color: const Color(0xFF222222),
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(
-            color: selected ? const Color(0xFFFFD700) : const Color(0xFF555555),
-            width: selected ? 2 : 1,
-          ),
-        ),
-        child: slot.isEmpty
-            ? const SizedBox.shrink()
-            : Stack(
-                children: [
-                  Center(
-                    child: Container(
-                      width: 22,
-                      height: 22,
-                      decoration: BoxDecoration(
-                        color: itemSpecs[slot.type!]?.color ??
-                            const Color(0xFF888888),
-                        borderRadius: BorderRadius.circular(3),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    right: 2,
-                    bottom: 1,
-                    child: Text(
-                      '${slot.count}',
-                      style: const TextStyle(
-                        fontSize: 9,
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        decoration: TextDecoration.none,
-                        shadows: [
-                          Shadow(offset: Offset(1, 1), blurRadius: 1),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
+        child: Stack(
+          children: [
+            Image.asset(
+              selected
+                  ? 'assets/images/ui/hotbar_selected.png'
+                  : 'assets/images/ui/hotbar_slot.png',
+              width: 38,
+              height: 38,
+              filterQuality: FilterQuality.none,
+              fit: BoxFit.fill,
+            ),
+            if (!slot.isEmpty) ...[
+              Center(
+                child: _slotIcon(slot.type!),
               ),
+              Positioned(
+                right: 2,
+                bottom: 1,
+                child: Text(
+                  '${slot.count}',
+                  style: const TextStyle(
+                    fontSize: 9,
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    decoration: TextDecoration.none,
+                    shadows: [
+                      Shadow(offset: Offset(1, 1), blurRadius: 1),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
+    );
+  }
+
+  Widget _slotIcon(ItemType type) {
+    final path = itemIconPaths[type];
+    if (path == null) {
+      return Container(
+        width: 22,
+        height: 22,
+        decoration: BoxDecoration(
+          color: itemSpecs[type]?.color ?? const Color(0xFF888888),
+          borderRadius: BorderRadius.circular(3),
+        ),
+      );
+    }
+    return Image.asset(
+      path,
+      width: 22,
+      height: 22,
+      filterQuality: FilterQuality.none,
     );
   }
 }
