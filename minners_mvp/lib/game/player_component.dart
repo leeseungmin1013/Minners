@@ -46,11 +46,18 @@ class PlayerComponent extends SpriteComponent
   // Gear animation state
   double _swingTimer = 0;
   bool _isThrusting = false;
+  bool _showJetpack = false;
   final Paint _gearPaint = Paint();
 
-  // Swing animation tuning
+  // Swing animation tuning (pickaxe)
   static const double _swingSpeed = 10.0;
   static const double _swingAmplitude = 0.6;
+
+  // Drill vibration tuning
+  static const double _drillVibrateSpeed = 45.0;
+  static const double _drillVibrateAmp = 2.0;
+  static const double _drillVibratePerpSpeed = 37.0;
+  static const double _drillVibratePerpAmp = 0.8;
 
   bool get _isDrill => miningTier.index >= PickaxeTier.drillMk1.index;
 
@@ -178,8 +185,8 @@ class PlayerComponent extends SpriteComponent
       canvas.scale(1, -1);
     }
 
-    // 1. Jetpack behind player (draw first)
-    if (_isThrusting) {
+    // 1. Jetpack behind player (draw first when enabled)
+    if (_showJetpack) {
       _renderJetpack(canvas);
     }
 
@@ -188,7 +195,11 @@ class PlayerComponent extends SpriteComponent
 
     // 3. Mining tool in front of player (draw last)
     if (isMining) {
-      _renderMiningTool(canvas);
+      if (_isDrill) {
+        _renderDrill(canvas);
+      } else {
+        _renderPickaxe(canvas);
+      }
     }
 
     canvas.restore();
@@ -196,6 +207,17 @@ class PlayerComponent extends SpriteComponent
 
   void _renderJetpack(Canvas canvas) {
     final (ox, oy) = _jetpackOffset();
+
+    // Thrust flame effect when actively thrusting
+    if (_isThrusting) {
+      final flamePaint = Paint()..color = const Color(0xCCFF8800);
+      final flameH = 4.0 + sin(_swingTimer * 30) * 2.0;
+      canvas.drawRect(
+        Rect.fromLTWH(ox + 1, oy + 14, 6, flameH),
+        flamePaint,
+      );
+    }
+
     gearJetpack.render(
       canvas,
       position: Vector2(ox, oy),
@@ -203,11 +225,9 @@ class PlayerComponent extends SpriteComponent
     );
   }
 
-  void _renderMiningTool(Canvas canvas) {
+  void _renderPickaxe(Canvas canvas) {
     final (ox, oy, baseAngle) = _toolTransform();
     final totalAngle = baseAngle + _swingAngle();
-
-    final toolSprite = _isDrill ? gearDrill : gearPickaxe;
 
     final tierColor = pickaxeSpecs[miningTier]!.color;
     _gearPaint.colorFilter = ColorFilter.mode(tierColor, BlendMode.modulate);
@@ -219,21 +239,44 @@ class PlayerComponent extends SpriteComponent
     canvas.translate(ox, oy);
     canvas.rotate(totalAngle);
 
-    if (_isDrill) {
-      toolSprite.render(
-        canvas,
-        position: Vector2(0, -gh / 2),
-        size: Vector2(gw, gh),
-        overridePaint: _gearPaint,
-      );
-    } else {
-      toolSprite.render(
-        canvas,
-        position: Vector2(-gw / 2, -gh),
-        size: Vector2(gw, gh),
-        overridePaint: _gearPaint,
-      );
-    }
+    gearPickaxe.render(
+      canvas,
+      position: Vector2(-gw / 2, -gh),
+      size: Vector2(gw, gh),
+      overridePaint: _gearPaint,
+    );
+
+    canvas.restore();
+  }
+
+  void _renderDrill(Canvas canvas) {
+    final (ox, oy, baseAngle) = _toolTransform();
+
+    // Fix flip: negate angle in flipped canvas so orientation stays symmetric
+    final angle = _flipX ? -baseAngle : baseAngle;
+
+    // Drill vibration: rapid oscillation along drill axis and perpendicular
+    final vibrateAlong = sin(_swingTimer * _drillVibrateSpeed) * _drillVibrateAmp;
+    final vibratePerp = sin(_swingTimer * _drillVibratePerpSpeed) * _drillVibratePerpAmp;
+
+    final tierColor = pickaxeSpecs[miningTier]!.color;
+    _gearPaint.colorFilter = ColorFilter.mode(tierColor, BlendMode.modulate);
+
+    const double gw = 14;
+    const double gh = 14;
+
+    canvas.save();
+    canvas.translate(ox, oy);
+    canvas.rotate(angle);
+    // Vibration in drill-local space (X = along drill, Y = perpendicular)
+    canvas.translate(vibrateAlong, vibratePerp);
+
+    gearDrill.render(
+      canvas,
+      position: Vector2(0, -gh / 2),
+      size: Vector2(gw, gh),
+      overridePaint: _gearPaint,
+    );
 
     canvas.restore();
   }
@@ -270,6 +313,7 @@ class PlayerComponent extends SpriteComponent
         velocity.y = -jumpSpeed;
         _jumpGraceTimer = _jumpGrace;
       } else if (gs.hasJetpack &&
+          gs.jetpackEnabled &&
           gs.jetpackFuel > 0 &&
           _jumpGraceTimer <= 0) {
         // Jetpack – only after grace period so normal jumps don't burn fuel
@@ -287,11 +331,15 @@ class PlayerComponent extends SpriteComponent
     _isThrusting = jumpHeld &&
         !_onGround &&
         gs.hasJetpack &&
+        gs.jetpackEnabled &&
         gs.jetpackFuel > 0 &&
         _jumpGraceTimer <= 0;
 
+    // Show jetpack on back whenever enabled
+    _showJetpack = gs.hasJetpack && gs.jetpackEnabled;
+
     // Reset colour when not thrusting
-    if (!jumpHeld || _onGround || !gs.hasJetpack || gs.jetpackFuel <= 0) {
+    if (!_isThrusting) {
       paint.color = const Color(0xFFFFFFFF);
     }
 

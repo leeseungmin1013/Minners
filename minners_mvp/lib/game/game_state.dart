@@ -10,6 +10,7 @@ class GameState {
 
   // Jetpack
   bool hasJetpack = false;
+  bool jetpackEnabled = false;
   double jetpackFuel = 0;
   double jetpackMaxFuel = 100;
 
@@ -30,6 +31,7 @@ class GameState {
     if (!hasJetpack && gold >= cost) {
       gold -= cost;
       hasJetpack = true;
+      jetpackEnabled = true;
       jetpackFuel = jetpackMaxFuel;
       return true;
     }
@@ -76,6 +78,7 @@ class GameState {
         'gold': gold,
         'pickaxeTier': pickaxeTier.name,
         'hasJetpack': hasJetpack,
+        'jetpackEnabled': jetpackEnabled,
         'jetpackFuel': jetpackFuel,
         'jetpackMaxFuel': jetpackMaxFuel,
       };
@@ -89,6 +92,7 @@ class GameState {
       orElse: () => PickaxeTier.wood,
     );
     hasJetpack = json['hasJetpack'] as bool;
+    jetpackEnabled = json['jetpackEnabled'] as bool? ?? hasJetpack;
     jetpackFuel = (json['jetpackFuel'] as num).toDouble();
     jetpackMaxFuel = (json['jetpackMaxFuel'] as num).toDouble();
   }

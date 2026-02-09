@@ -100,47 +100,72 @@ class _HotbarOverlayState extends State<HotbarOverlay>
   Widget _buildJetpackSlot() {
     final fuel = _gs.jetpackFuel;
     final maxFuel = _gs.jetpackMaxFuel;
+    final enabled = _gs.jetpackEnabled;
     final depletedFraction = 1.0 - (fuel / maxFuel).clamp(0.0, 1.0);
 
-    return Container(
-      width: 38,
-      height: 38,
-      decoration: BoxDecoration(
-        color: const Color(0xAA111111),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      padding: const EdgeInsets.all(3),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(3),
-        child: Stack(
-          children: [
-            Image.asset(
-              'assets/images/ui/hotbar_slot.png',
-              width: 32,
-              height: 32,
-              filterQuality: FilterQuality.none,
-              fit: BoxFit.fill,
-            ),
-            Center(
-              child: Image.asset(
-                'assets/images/items/jetpack.png',
-                width: 22,
-                height: 22,
+    return GestureDetector(
+      onTap: () => _gs.jetpackEnabled = !_gs.jetpackEnabled,
+      child: Container(
+        width: 38,
+        height: 38,
+        decoration: BoxDecoration(
+          color: const Color(0xAA111111),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(
+            color: enabled ? const Color(0xFFFF8800) : Colors.transparent,
+            width: 2,
+          ),
+        ),
+        padding: const EdgeInsets.all(1),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(3),
+          child: Stack(
+            children: [
+              Image.asset(
+                'assets/images/ui/hotbar_slot.png',
+                width: 32,
+                height: 32,
                 filterQuality: FilterQuality.none,
+                fit: BoxFit.fill,
               ),
-            ),
-            // Fuel gauge: dark overlay from top when depleted
-            if (depletedFraction > 0.01)
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                child: Container(
-                  height: 32 * depletedFraction,
-                  color: const Color(0xBB000000),
+              Center(
+                child: Image.asset(
+                  'assets/images/items/jetpack.png',
+                  width: 22,
+                  height: 22,
+                  filterQuality: FilterQuality.none,
                 ),
               ),
-          ],
+              // Fuel gauge: dark overlay from top when depleted
+              if (depletedFraction > 0.01)
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: Container(
+                    height: 32 * depletedFraction,
+                    color: const Color(0xBB000000),
+                  ),
+                ),
+              // OFF indicator when disabled
+              if (!enabled)
+                Container(
+                  width: 32,
+                  height: 32,
+                  color: const Color(0x88000000),
+                  alignment: Alignment.center,
+                  child: const Text(
+                    'OFF',
+                    style: TextStyle(
+                      fontSize: 9,
+                      color: Color(0xAAFF4444),
+                      fontWeight: FontWeight.bold,
+                      decoration: TextDecoration.none,
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
