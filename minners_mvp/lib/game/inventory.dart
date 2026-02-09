@@ -288,4 +288,30 @@ class Inventory extends ChangeNotifier {
     }
     return m;
   }
+
+  /// Serialize all 48 slots (hotbar + main) to JSON.
+  List<Map<String, dynamic>> toJson() {
+    return _all.map((s) {
+      if (s.isEmpty) return <String, dynamic>{'empty': true};
+      return <String, dynamic>{
+        'type': s.type!.index,
+        'count': s.count,
+      };
+    }).toList();
+  }
+
+  /// Restore slots from JSON data.
+  void loadFromJson(List<Map<String, dynamic>> data) {
+    for (var i = 0; i < data.length && i < hotbarCount + mainCount; i++) {
+      final slot = slotAt(i);
+      final entry = data[i];
+      if (entry.containsKey('empty') && entry['empty'] == true) {
+        slot.clear();
+      } else {
+        slot.type = ItemType.values[entry['type'] as int];
+        slot.count = entry['count'] as int;
+      }
+    }
+    notifyListeners();
+  }
 }

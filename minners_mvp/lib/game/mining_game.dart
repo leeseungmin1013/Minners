@@ -12,6 +12,8 @@ import 'tile_data.dart';
 import 'game_state.dart';
 import 'inventory.dart';
 import 'player_component.dart';
+import 'save_data.dart';
+import 'save_manager.dart';
 import 'tile_component.dart';
 import 'world_manager.dart';
 import 'hud_component.dart';
@@ -118,6 +120,7 @@ class _CameraTarget extends PositionComponent {
 }
 
 class MiningGame extends FlameGame with TapCallbacks {
+  final SaveData? initialSaveData;
   final GameState gameState = GameState();
   late final WorldManager worldManager;
   late final PlayerComponent player;
@@ -126,7 +129,10 @@ class MiningGame extends FlameGame with TapCallbacks {
   late final _FacingOutline _facingOutline;
   JoystickComponent? _joystick;
   HudComponent? _hud;
-  late final Sprite _playerSprite;
+  late final Sprite _playerRight;
+  late final Sprite _playerFront;
+  late final Sprite _playerUpRight;
+  late final Sprite _playerUp;
   late final Sprite _tntSprite;
   late final List<Sprite> _portalFrames;
   late final List<Sprite> _explosionFrames;
@@ -135,6 +141,13 @@ class MiningGame extends FlameGame with TapCallbacks {
   bool _loaded = false;
   bool inventoryOpen = false;
   bool _btnJumpHeld = false;
+  bool _paused = false;
+  double _playtimeSeconds = 0;
+  String? _currentSaveId;
+
+  // Auto-save
+  double _autoSaveTimer = 0;
+  static const double autoSaveInterval = 120.0;
 
   // Hold-to-mine state
   bool _btnMineHeld = false; // mobile mine button held
@@ -151,7 +164,10 @@ class MiningGame extends FlameGame with TapCallbacks {
   int _nextDoorId = 1;
   TeleportDoor? interactingDoor;
 
+  MiningGame({this.initialSaveData});
+
   Inventory get inventory => gameState.inventory;
+  bool get isPaused => _paused;
 
   // ── Lifecycle ────────────────────────────────────────────────────────────
 
@@ -173,7 +189,7 @@ class MiningGame extends FlameGame with TapCallbacks {
       'tiles/crack_2.png',
       'tiles/crack_3.png',
       'tiles/crack_4.png',
-      'player/player.png',
+      'player/Sprite-0001-sheet.png',
       'objects/tnt.png',
       'objects/portal_0.png',
       'objects/portal_1.png',
@@ -187,6 +203,9 @@ class MiningGame extends FlameGame with TapCallbacks {
       'backgrounds/underground_1.png',
       'backgrounds/underground_2.png',
       'backgrounds/underground_3.png',
+      'player/gear_pickaxe.png',
+      'player/gear_drill.png',
+      'player/gear_jetpack.png',
     ]);
 
     final tileSprites = <TileType, Sprite>{
@@ -210,7 +229,14 @@ class MiningGame extends FlameGame with TapCallbacks {
       ],
     );
 
-    _playerSprite = Sprite(images.fromCache('player/player.png'));
+    final playerSheet = images.fromCache('player/Sprite-0001-sheet.png');
+    _playerRight = Sprite(playerSheet, srcPosition: Vector2(0, 0), srcSize: Vector2(24, 24));
+    _playerFront = Sprite(playerSheet, srcPosition: Vector2(26, 0), srcSize: Vector2(24, 24));
+    _playerUpRight = Sprite(playerSheet, srcPosition: Vector2(52, 0), srcSize: Vector2(24, 24));
+    _playerUp = Sprite(playerSheet, srcPosition: Vector2(78, 0), srcSize: Vector2(24, 24));
+    final gearPickaxe = Sprite(images.fromCache('player/gear_pickaxe.png'));
+    final gearDrill = Sprite(images.fromCache('player/gear_drill.png'));
+    final gearJetpack = Sprite(images.fromCache('player/gear_jetpack.png'));
     _tntSprite = Sprite(images.fromCache('objects/tnt.png'));
     _portalFrames = [
       Sprite(images.fromCache('objects/portal_0.png')),
@@ -265,17 +291,65 @@ class MiningGame extends FlameGame with TapCallbacks {
 
     // World
     worldManager = WorldManager(world: gameWorld);
-    worldManager.generate();
+    if (initialSaveData != null) {
+      worldManager.loadFromJson(initialSaveData!.tiles);
+    } else {
+      worldManager.generate();
+    }
 
     // Player
+    final startPos = initialSaveData != null
+        ? Vector2(initialSaveData!.playerX, initialSaveData!.playerY)
+        : Vector2(worldWidth * tileSize / 2, (skyRows - 2) * tileSize.toDouble());
     player = PlayerComponent(
-      position: Vector2(
-        worldWidth * tileSize / 2,
-        (skyRows - 2) * tileSize.toDouble(),
-      ),
-      sprite: _playerSprite,
+      position: startPos,
+      spriteRight: _playerRight,
+      spriteFront: _playerFront,
+      spriteUpRight: _playerUpRight,
+      spriteUp: _playerUp,
+      gearPickaxe: gearPickaxe,
+      gearDrill: gearDrill,
+      gearJetpack: gearJetpack,
     );
     gameWorld.add(player);
+
+    // Restore save data
+    if (initialSaveData != null) {
+      final sd = initialSaveData!;
+      player.velocity
+        ..x = sd.velocityX
+        ..y = sd.velocityY;
+      gameState.loadFromJson({
+        'hp': sd.hp,
+        'maxHp': sd.maxHp,
+        'gold': sd.gold,
+        'pickaxeTier': sd.pickaxeTier,
+        'hasJetpack': sd.hasJetpack,
+        'jetpackFuel': sd.jetpackFuel,
+        'jetpackMaxFuel': sd.jetpackMaxFuel,
+      });
+      gameState.inventory.loadFromJson(sd.inventorySlots);
+      gameState.inventory.select(sd.selectedHotbar);
+      _playtimeSeconds = sd.playtimeSeconds.toDouble();
+      _currentSaveId = sd.id;
+
+      // Restore teleport doors
+      for (final doorData in sd.doors) {
+        final door = TeleportDoor(
+          position: Vector2(
+            (doorData['x'] as num).toDouble(),
+            (doorData['y'] as num).toDouble(),
+          ),
+          id: doorData['id'] as int,
+          animation: _buildPortalAnimation(),
+        );
+        doors.add(door);
+        gameWorld.add(door);
+      }
+      if (doors.isNotEmpty) {
+        _nextDoorId = doors.map((d) => d.id).reduce((a, b) => a > b ? a : b) + 1;
+      }
+    }
 
     // Facing outline indicator
     _facingOutline = _FacingOutline();
@@ -360,10 +434,27 @@ class MiningGame extends FlameGame with TapCallbacks {
 
   // ── Update ───────────────────────────────────────────────────────────────
 
+  void pauseGame() {
+    _paused = true;
+  }
+
+  void resumeGame() {
+    _paused = false;
+  }
+
   @override
   void update(double dt) {
     super.update(dt);
-    if (!_loaded) return;
+    if (!_loaded || _paused) return;
+
+    _playtimeSeconds += dt;
+
+    // Auto-save
+    _autoSaveTimer += dt;
+    if (_autoSaveTimer >= autoSaveInterval) {
+      _autoSaveTimer = 0;
+      _autoSave();
+    }
 
     final pressed = HardwareKeyboard.instance.logicalKeysPressed;
 
@@ -373,17 +464,45 @@ class MiningGame extends FlameGame with TapCallbacks {
       final jy = _joystick!.relativeDelta.y.clamp(-1.0, 1.0);
       player.setMoveInput(jx.abs() > 0.1 ? jx : _kbAxis);
 
-      // Joystick vertical → set facing
-      if (jy < -0.4) player.facingDir = FacingDir.up;
-      if (jy > 0.4) player.facingDir = FacingDir.down;
+      // Joystick → set facing (including diagonals)
+      final jUp = jy < -0.3;
+      final jDown = jy > 0.3;
+      if (jUp && jx < -0.3) {
+        player.facingDir = FacingDir.upLeft;
+      } else if (jUp && jx > 0.3) {
+        player.facingDir = FacingDir.upRight;
+      } else if (jDown && jx < -0.3) {
+        player.facingDir = FacingDir.downLeft;
+      } else if (jDown && jx > 0.3) {
+        player.facingDir = FacingDir.downRight;
+      } else if (jUp) {
+        player.facingDir = FacingDir.up;
+      } else if (jDown) {
+        player.facingDir = FacingDir.down;
+      }
 
       // Keyboard facing (overrides joystick if pressed)
-      if (pressed.contains(LogicalKeyboardKey.keyW) ||
-          pressed.contains(LogicalKeyboardKey.arrowUp)) {
+      final kbUp = pressed.contains(LogicalKeyboardKey.keyW) ||
+          pressed.contains(LogicalKeyboardKey.arrowUp);
+      final kbDown = pressed.contains(LogicalKeyboardKey.keyS) ||
+          pressed.contains(LogicalKeyboardKey.arrowDown);
+      final kbLeft = pressed.contains(LogicalKeyboardKey.keyA) ||
+          pressed.contains(LogicalKeyboardKey.arrowLeft);
+      final kbRight = pressed.contains(LogicalKeyboardKey.keyD) ||
+          pressed.contains(LogicalKeyboardKey.arrowRight);
+
+      // Diagonal combinations
+      if (kbUp && kbLeft) {
+        player.facingDir = FacingDir.upLeft;
+      } else if (kbUp && kbRight) {
+        player.facingDir = FacingDir.upRight;
+      } else if (kbDown && kbLeft) {
+        player.facingDir = FacingDir.downLeft;
+      } else if (kbDown && kbRight) {
+        player.facingDir = FacingDir.downRight;
+      } else if (kbUp) {
         player.facingDir = FacingDir.up;
-      }
-      if (pressed.contains(LogicalKeyboardKey.keyS) ||
-          pressed.contains(LogicalKeyboardKey.arrowDown)) {
+      } else if (kbDown) {
         player.facingDir = FacingDir.down;
       }
     } else {
@@ -393,9 +512,7 @@ class MiningGame extends FlameGame with TapCallbacks {
     // Jump held = keyboard OR mobile button
     final kbJump =
         !inventoryOpen &&
-        (pressed.contains(LogicalKeyboardKey.space) ||
-            pressed.contains(LogicalKeyboardKey.arrowUp) ||
-            pressed.contains(LogicalKeyboardKey.keyW));
+        pressed.contains(LogicalKeyboardKey.space);
     player.jumpHeld = kbJump || _btnJumpHeld;
 
     // ── Continuous mining (mine button / left-click only) ─────────────────
@@ -429,6 +546,10 @@ class MiningGame extends FlameGame with TapCallbacks {
     _activeMiningTx = curMineTx;
     _activeMiningTy = curMineTy;
 
+    // Communicate mining state to player for gear overlay rendering
+    player.isMining = (_activeMiningTx >= 0);
+    player.miningTier = gameState.pickaxeTier;
+
     // ── Facing outline indicator ─────────────────────────────────────────
     _updateFacingOutline();
 
@@ -448,16 +569,26 @@ class MiningGame extends FlameGame with TapCallbacks {
   }
 
   void _updateFacingOutline() {
-    final (ftx, fty) = _facingTile();
-    if (worldManager.hasTileAt(ftx, fty)) {
+    // If tap-mining a specific tile, show outline there instead of facing tile
+    final int otx, oty;
+    if (_tapMineHeld && worldManager.hasTileAt(_tapMineTx, _tapMineTy)) {
+      otx = _tapMineTx;
+      oty = _tapMineTy;
+    } else {
+      final (ftx, fty) = _facingTile();
+      otx = ftx;
+      oty = fty;
+    }
+
+    if (worldManager.hasTileAt(otx, oty)) {
       _facingOutline.position
-        ..x = ftx * tileSize
-        ..y = fty * tileSize;
+        ..x = otx * tileSize
+        ..y = oty * tileSize;
       _facingOutline.visible = true;
 
       // Mining progress: show green outline proportional to damage dealt
-      if (_activeMiningTx == ftx && _activeMiningTy == fty) {
-        final state = worldManager.tiles[fty][ftx]!;
+      if (_activeMiningTx == otx && _activeMiningTy == oty) {
+        final state = worldManager.tiles[oty][otx]!;
         final maxHp = tileSpecs[state.type]!.maxHp.toDouble();
         _facingOutline.miningProgress = 1.0 - (state.hp / maxHp);
       } else {
@@ -469,11 +600,54 @@ class MiningGame extends FlameGame with TapCallbacks {
     }
   }
 
+  // ── Save ─────────────────────────────────────────────────────────────
+
+  SaveData exportSaveData() {
+    final depth = ((player.position.y / tileSize) - skyRows).round();
+    return SaveData(
+      id: _currentSaveId ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      name: 'Depth $depth - ${gameState.gold}G',
+      timestamp: DateTime.now(),
+      playtimeSeconds: _playtimeSeconds.round(),
+      playerX: player.position.x,
+      playerY: player.position.y,
+      velocityX: player.velocity.x,
+      velocityY: player.velocity.y,
+      hp: gameState.hp,
+      maxHp: gameState.maxHp,
+      gold: gameState.gold,
+      pickaxeTier: gameState.pickaxeTier.name,
+      hasJetpack: gameState.hasJetpack,
+      jetpackFuel: gameState.jetpackFuel,
+      jetpackMaxFuel: gameState.jetpackMaxFuel,
+      inventorySlots: gameState.inventory.toJson(),
+      selectedHotbar: gameState.inventory.selected,
+      tiles: worldManager.tilesToJson(),
+      doors: doors
+          .map((d) => <String, dynamic>{
+                'id': d.id,
+                'x': d.position.x,
+                'y': d.position.y,
+              })
+          .toList(),
+    );
+  }
+
+  Future<void> saveGame() async {
+    final data = exportSaveData();
+    _currentSaveId ??= data.id;
+    await SaveManager().save(data);
+  }
+
+  Future<void> _autoSave() async {
+    await saveGame();
+  }
+
   // ── Left click → mine ─────────────────────────────────────────────────
 
   @override
   void onTapDown(TapDownEvent event) {
-    if (!_loaded || inventoryOpen) return;
+    if (!_loaded || inventoryOpen || _paused) return;
     final wp = gameCamera.globalToLocal(event.canvasPosition);
     final tx = (wp.x / tileSize).floor();
     final ty = (wp.y / tileSize).floor();
@@ -506,7 +680,7 @@ class MiningGame extends FlameGame with TapCallbacks {
   // ── Right click → place (called from main.dart Listener) ──────────────
 
   void handleRightClickDown(Offset screenPos) {
-    if (!_loaded || inventoryOpen) return;
+    if (!_loaded || inventoryOpen || _paused) return;
     final wp = gameCamera.globalToLocal(Vector2(screenPos.dx, screenPos.dy));
     final tx = (wp.x / tileSize).floor();
     final ty = (wp.y / tileSize).floor();
@@ -533,6 +707,7 @@ class MiningGame extends FlameGame with TapCallbacks {
     final px = ((player.position.x + player.size.x / 2) / tileSize).floor();
     final centerY = ((player.position.y + player.size.y / 2) / tileSize)
         .floor();
+    final belowY = ((player.position.y + player.size.y) / tileSize).floor();
     switch (player.facingDir) {
       case FacingDir.left:
         return (px - 1, centerY);
@@ -541,8 +716,15 @@ class MiningGame extends FlameGame with TapCallbacks {
       case FacingDir.up:
         return (px, centerY - 1);
       case FacingDir.down:
-        final belowY = ((player.position.y + player.size.y) / tileSize).floor();
         return (px, belowY);
+      case FacingDir.upLeft:
+        return (px - 1, centerY - 1);
+      case FacingDir.upRight:
+        return (px + 1, centerY - 1);
+      case FacingDir.downLeft:
+        return (px - 1, belowY);
+      case FacingDir.downRight:
+        return (px + 1, belowY);
     }
   }
 
@@ -695,6 +877,18 @@ class MiningGame extends FlameGame with TapCallbacks {
         case FacingDir.down:
           px = ftx;
           py = fty - 1;
+        case FacingDir.upLeft:
+          px = ftx + 1;
+          py = fty + 1;
+        case FacingDir.upRight:
+          px = ftx - 1;
+          py = fty + 1;
+        case FacingDir.downLeft:
+          px = ftx + 1;
+          py = fty - 1;
+        case FacingDir.downRight:
+          px = ftx - 1;
+          py = fty - 1;
       }
       _tryUseOrPlace(px, py);
     } else {
@@ -772,12 +966,28 @@ class MiningGame extends FlameGame with TapCallbacks {
   bool _handleKey(KeyEvent event) {
     if (!_loaded) return false;
 
+    // ESC: close inventory, or toggle pause
+    if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.escape) {
+      if (inventoryOpen) {
+        closeInventory();
+        return true;
+      }
+      if (_paused) {
+        resumeGame();
+        overlays.remove('pause');
+      } else {
+        pauseGame();
+        overlays.add('pause');
+      }
+      return true;
+    }
+
     if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.keyE) {
-      toggleInventory();
+      if (!_paused) toggleInventory();
       return false;
     }
 
-    if (inventoryOpen) return false;
+    if (inventoryOpen || _paused) return false;
 
     final pressed = HardwareKeyboard.instance.logicalKeysPressed;
     final left =

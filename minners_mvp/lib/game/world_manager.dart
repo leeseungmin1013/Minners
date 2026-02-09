@@ -1,5 +1,6 @@
 import 'package:flame/components.dart';
 
+import 'save_data.dart';
 import 'tile_data.dart';
 import 'tile_component.dart';
 
@@ -227,5 +228,21 @@ class WorldManager {
     if (y < 0) return false;
     if (y >= worldHeight) return true;
     return tiles[y][x] != null;
+  }
+
+  /// Serialize world tiles with RLE compression.
+  List<Map<String, dynamic>> tilesToJson() => SaveData.encodeTiles(tiles);
+
+  /// Replace the tile grid from saved data.
+  void loadFromJson(List<Map<String, dynamic>> data) {
+    // Clear existing visible components
+    for (final comp in _visible.values) {
+      comp.removeFromParent();
+    }
+    _visible.clear();
+    _lx = _rx = _ty = _by = -1;
+
+    // Decode tiles into the grid
+    tiles = SaveData.decodeTiles(data);
   }
 }

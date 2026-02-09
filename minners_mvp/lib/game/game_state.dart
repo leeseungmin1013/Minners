@@ -69,4 +69,27 @@ class GameState {
     }
     hp = maxHp;
   }
+
+  Map<String, dynamic> toJson() => {
+        'hp': hp,
+        'maxHp': maxHp,
+        'gold': gold,
+        'pickaxeTier': pickaxeTier.name,
+        'hasJetpack': hasJetpack,
+        'jetpackFuel': jetpackFuel,
+        'jetpackMaxFuel': jetpackMaxFuel,
+      };
+
+  void loadFromJson(Map<String, dynamic> json) {
+    hp = json['hp'] as int;
+    maxHp = json['maxHp'] as int;
+    gold = json['gold'] as int;
+    pickaxeTier = PickaxeTier.values.firstWhere(
+      (t) => t.name == json['pickaxeTier'],
+      orElse: () => PickaxeTier.wood,
+    );
+    hasJetpack = json['hasJetpack'] as bool;
+    jetpackFuel = (json['jetpackFuel'] as num).toDouble();
+    jetpackMaxFuel = (json['jetpackMaxFuel'] as num).toDouble();
+  }
 }

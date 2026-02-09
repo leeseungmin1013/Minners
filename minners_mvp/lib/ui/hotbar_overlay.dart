@@ -1,13 +1,40 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../game/mining_game.dart';
 import '../game/inventory.dart';
+import '../game/tile_data.dart';
+import '../game/game_state.dart';
 
-class HotbarOverlay extends StatelessWidget {
+class HotbarOverlay extends StatefulWidget {
   final MiningGame game;
   const HotbarOverlay({super.key, required this.game});
 
-  Inventory get _inv => game.inventory;
+  @override
+  State<HotbarOverlay> createState() => _HotbarOverlayState();
+}
+
+class _HotbarOverlayState extends State<HotbarOverlay>
+    with SingleTickerProviderStateMixin {
+  late final Ticker _ticker;
+
+  Inventory get _inv => widget.game.inventory;
+  GameState get _gs => widget.game.gameState;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker = createTicker((_) {
+      if (mounted) setState(() {});
+    });
+    _ticker.start();
+  }
+
+  @override
+  void dispose() {
+    _ticker.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -15,15 +42,113 @@ class HotbarOverlay extends StatelessWidget {
       alignment: Alignment.bottomCenter,
       child: Padding(
         padding: const EdgeInsets.only(bottom: 6),
-        child: ListenableBuilder(
-          listenable: _inv,
-          builder: (context, _) => _buildBar(),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            _buildEquipSlot(),
+            const SizedBox(width: 6),
+            _buildHotbar(),
+            if (_gs.hasJetpack) ...[
+              const SizedBox(width: 6),
+              _buildJetpackSlot(),
+            ],
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildBar() {
+  // ── Equipment slot (pickaxe / drill) ──────────────────────────────────
+
+  Widget _buildEquipSlot() {
+    final tier = _gs.pickaxeTier;
+    final iconPath = pickaxeIconPaths[tier]!;
+
+    return Container(
+      width: 38,
+      height: 38,
+      decoration: BoxDecoration(
+        color: const Color(0xAA111111),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      padding: const EdgeInsets.all(3),
+      child: Stack(
+        children: [
+          Image.asset(
+            'assets/images/ui/hotbar_slot.png',
+            width: 32,
+            height: 32,
+            filterQuality: FilterQuality.none,
+            fit: BoxFit.fill,
+          ),
+          Center(
+            child: Image.asset(
+              iconPath,
+              width: 22,
+              height: 22,
+              filterQuality: FilterQuality.none,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Jetpack slot with fuel gauge ──────────────────────────────────────
+
+  Widget _buildJetpackSlot() {
+    final fuel = _gs.jetpackFuel;
+    final maxFuel = _gs.jetpackMaxFuel;
+    final depletedFraction = 1.0 - (fuel / maxFuel).clamp(0.0, 1.0);
+
+    return Container(
+      width: 38,
+      height: 38,
+      decoration: BoxDecoration(
+        color: const Color(0xAA111111),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      padding: const EdgeInsets.all(3),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(3),
+        child: Stack(
+          children: [
+            Image.asset(
+              'assets/images/ui/hotbar_slot.png',
+              width: 32,
+              height: 32,
+              filterQuality: FilterQuality.none,
+              fit: BoxFit.fill,
+            ),
+            Center(
+              child: Image.asset(
+                'assets/images/items/jetpack.png',
+                width: 22,
+                height: 22,
+                filterQuality: FilterQuality.none,
+              ),
+            ),
+            // Fuel gauge: dark overlay from top when depleted
+            if (depletedFraction > 0.01)
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: Container(
+                  height: 32 * depletedFraction,
+                  color: const Color(0xBB000000),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Hotbar (existing) ─────────────────────────────────────────────────
+
+  Widget _buildHotbar() {
     return Container(
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(

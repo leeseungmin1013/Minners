@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 
 import '../game/mining_game.dart';
@@ -37,6 +39,189 @@ class _InventoryOverlayState extends State<InventoryOverlay> {
   }
 
   Widget _buildPanel() {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildEquipPanel(),
+        const SizedBox(width: 10),
+        _buildInventoryPanel(),
+      ],
+    );
+  }
+
+  // ── Equipment panel (left side) ─────────────────────────────────────
+
+  Widget _buildEquipPanel() {
+    final tier = _gs.pickaxeTier;
+    final pickSpec = pickaxeSpecs[tier]!;
+
+    return Container(
+      width: 130,
+      constraints: const BoxConstraints(maxHeight: 560),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xF01E1E1E),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFF555555)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Player sprite (front frame only)
+          Container(
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(
+              color: const Color(0xFF2A2A2A),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFF444444)),
+            ),
+            child: Center(
+              child: CustomPaint(
+                size: const Size(64, 64),
+                painter: _PlayerFrontPainter(
+                  widget.game.images.fromCache('player/Sprite-0001-sheet.png'),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+
+          // Equipment label
+          const Align(
+            alignment: Alignment.centerLeft,
+            child: Text('Equipment',
+                style: TextStyle(
+                    color: Colors.white38,
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    decoration: TextDecoration.none)),
+          ),
+          const SizedBox(height: 6),
+
+          // Pickaxe / Drill
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: const Color(0xFF2A2A2A),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: Color.lerp(
+                const Color(0xFF444444), pickSpec.color, 0.4)!),
+            ),
+            child: Row(
+              children: [
+                Image.asset(
+                  pickaxeIconPaths[tier]!,
+                  width: 24,
+                  height: 24,
+                  filterQuality: FilterQuality.none,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        pickSpec.name,
+                        style: TextStyle(
+                          color: pickSpec.color,
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                      Text(
+                        'DMG ${pickSpec.damage}',
+                        style: const TextStyle(
+                          color: Colors.white54,
+                          fontSize: 8,
+                          fontWeight: FontWeight.normal,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Jetpack
+          if (_gs.hasJetpack) ...[
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: const Color(0xFF2A2A2A),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(
+                    color: const Color(0xFF886622)),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Image.asset(
+                        'assets/images/items/jetpack.png',
+                        width: 24,
+                        height: 24,
+                        filterQuality: FilterQuality.none,
+                      ),
+                      const SizedBox(width: 6),
+                      const Expanded(
+                        child: Text(
+                          'Jetpack',
+                          style: TextStyle(
+                            color: Color(0xFFFFAA44),
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                            decoration: TextDecoration.none,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  // Fuel bar
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(3),
+                    child: SizedBox(
+                      height: 6,
+                      child: LinearProgressIndicator(
+                        value: (_gs.jetpackFuel / _gs.jetpackMaxFuel)
+                            .clamp(0.0, 1.0),
+                        backgroundColor: const Color(0xFF333333),
+                        valueColor: const AlwaysStoppedAnimation<Color>(
+                            Color(0xFFFFAA44)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Text(
+                      '${_gs.jetpackFuel.round()} / ${_gs.jetpackMaxFuel.round()}',
+                      style: const TextStyle(
+                        color: Colors.white38,
+                        fontSize: 7,
+                        fontWeight: FontWeight.normal,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // ── Main inventory panel (right side) ───────────────────────────────
+
+  Widget _buildInventoryPanel() {
     return Container(
       width: 540,
       constraints: const BoxConstraints(maxHeight: 560),
@@ -685,4 +870,21 @@ class _InventoryOverlayState extends State<InventoryOverlay> {
       filterQuality: FilterQuality.none,
     );
   }
+}
+
+/// Draws only the front frame (x=26, 24x24) from the player sprite sheet.
+class _PlayerFrontPainter extends CustomPainter {
+  final ui.Image sheet;
+  _PlayerFrontPainter(this.sheet);
+
+  static final _src = Rect.fromLTWH(26, 0, 24, 24);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final dst = Rect.fromLTWH(0, 0, size.width, size.height);
+    canvas.drawImageRect(sheet, _src, dst, Paint());
+  }
+
+  @override
+  bool shouldRepaint(_PlayerFrontPainter old) => old.sheet != sheet;
 }
