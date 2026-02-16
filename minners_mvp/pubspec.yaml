@@ -64,6 +64,9 @@ flutter:
   assets:
     - assets/images/tiles/
     - assets/images/player/
+    - assets/images/monsters/1 Pink_Monster/
+    - assets/images/monsters/2 Owlet_Monster/
+    - assets/images/monsters/3 Dude_Monster/
     - assets/images/items/
     - assets/images/objects/
     - assets/images/ui/

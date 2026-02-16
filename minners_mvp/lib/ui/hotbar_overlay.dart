@@ -64,33 +64,51 @@ class _HotbarOverlayState extends State<HotbarOverlay>
   Widget _buildEquipSlot() {
     final tier = _gs.pickaxeTier;
     final iconPath = pickaxeIconPaths[tier]!;
+    final isCombat = _gs.isCombatMode;
 
-    return Container(
-      width: 38,
-      height: 38,
-      decoration: BoxDecoration(
-        color: const Color(0xAA111111),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      padding: const EdgeInsets.all(3),
-      child: Stack(
-        children: [
-          Image.asset(
-            'assets/images/ui/hotbar_slot.png',
-            width: 32,
-            height: 32,
-            filterQuality: FilterQuality.none,
-            fit: BoxFit.fill,
-          ),
-          Center(
-            child: Image.asset(
-              iconPath,
-              width: 22,
-              height: 22,
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _gs.isCombatMode = !_gs.isCombatMode;
+        });
+      },
+      child: Container(
+        width: 38,
+        height: 38,
+        decoration: BoxDecoration(
+          color: const Color(0xAA111111),
+          borderRadius: BorderRadius.circular(6),
+          border: null,
+        ),
+        padding: const EdgeInsets.all(3),
+        child: Stack(
+          children: [
+            Image.asset(
+              'assets/images/ui/hotbar_slot.png',
+              width: 32,
+              height: 32,
               filterQuality: FilterQuality.none,
+              fit: BoxFit.fill,
             ),
-          ),
-        ],
+            Center(
+              child: isCombat
+                  ? Image.asset(
+                      'assets/images/player/gear_sword.png', // Using sprite as icon for now
+                      width: 22,
+                      height: 22,
+                      filterQuality: FilterQuality.none,
+                      color: pickaxeSpecs[tier]!.color,
+                      colorBlendMode: BlendMode.modulate,
+                    )
+                  : Image.asset(
+                      iconPath,
+                      width: 22,
+                      height: 22,
+                      filterQuality: FilterQuality.none,
+                    ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -209,9 +227,7 @@ class _HotbarOverlayState extends State<HotbarOverlay>
               fit: BoxFit.fill,
             ),
             if (!slot.isEmpty) ...[
-              Center(
-                child: _slotIcon(slot.type!),
-              ),
+              Center(child: _slotIcon(slot.type!)),
               Positioned(
                 right: 2,
                 bottom: 1,
@@ -222,9 +238,7 @@ class _HotbarOverlayState extends State<HotbarOverlay>
                     color: Colors.white,
                     fontWeight: FontWeight.bold,
                     decoration: TextDecoration.none,
-                    shadows: [
-                      Shadow(offset: Offset(1, 1), blurRadius: 1),
-                    ],
+                    shadows: [Shadow(offset: Offset(1, 1), blurRadius: 1)],
                   ),
                 ),
               ),

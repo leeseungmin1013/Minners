@@ -91,12 +91,15 @@ class _InventoryOverlayState extends State<InventoryOverlay> {
           // Equipment label
           const Align(
             alignment: Alignment.centerLeft,
-            child: Text('Equipment',
-                style: TextStyle(
-                    color: Colors.white38,
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    decoration: TextDecoration.none)),
+            child: Text(
+              'Equipment',
+              style: TextStyle(
+                color: Colors.white38,
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                decoration: TextDecoration.none,
+              ),
+            ),
           ),
           const SizedBox(height: 6),
 
@@ -106,8 +109,13 @@ class _InventoryOverlayState extends State<InventoryOverlay> {
             decoration: BoxDecoration(
               color: const Color(0xFF2A2A2A),
               borderRadius: BorderRadius.circular(6),
-              border: Border.all(color: Color.lerp(
-                const Color(0xFF444444), pickSpec.color, 0.4)!),
+              border: Border.all(
+                color: Color.lerp(
+                  const Color(0xFF444444),
+                  pickSpec.color,
+                  0.4,
+                )!,
+              ),
             ),
             child: Row(
               children: [
@@ -155,8 +163,7 @@ class _InventoryOverlayState extends State<InventoryOverlay> {
               decoration: BoxDecoration(
                 color: const Color(0xFF2A2A2A),
                 borderRadius: BorderRadius.circular(6),
-                border: Border.all(
-                    color: const Color(0xFF886622)),
+                border: Border.all(color: const Color(0xFF886622)),
               ),
               child: Column(
                 children: [
@@ -189,11 +196,14 @@ class _InventoryOverlayState extends State<InventoryOverlay> {
                     child: SizedBox(
                       height: 6,
                       child: LinearProgressIndicator(
-                        value: (_gs.jetpackFuel / _gs.jetpackMaxFuel)
-                            .clamp(0.0, 1.0),
+                        value: (_gs.jetpackFuel / _gs.jetpackMaxFuel).clamp(
+                          0.0,
+                          1.0,
+                        ),
                         backgroundColor: const Color(0xFF333333),
                         valueColor: const AlwaysStoppedAnimation<Color>(
-                            Color(0xFFFFAA44)),
+                          Color(0xFFFFAA44),
+                        ),
                       ),
                     ),
                   ),
@@ -239,19 +249,34 @@ class _InventoryOverlayState extends State<InventoryOverlay> {
             Row(
               children: [
                 const Expanded(
-                  child: Text('INVENTORY',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          decoration: TextDecoration.none)),
+                  child: Text(
+                    'INVENTORY',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      decoration: TextDecoration.none,
+                    ),
+                  ),
                 ),
-                Text('Gold: ${_gs.gold}  ',
-                    style: const TextStyle(
-                        color: Color(0xFFFFD700),
-                        fontSize: 14,
-                        fontWeight: FontWeight.normal,
-                        decoration: TextDecoration.none)),
+                Text(
+                  'Gold: ${_gs.gold}  ',
+                  style: const TextStyle(
+                    color: Color(0xFFFFD700),
+                    fontSize: 14,
+                    fontWeight: FontWeight.normal,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+                Text(
+                  'Token: ${_gs.dungeonTokens}  ',
+                  style: const TextStyle(
+                    color: Color(0xFF7AD7FF),
+                    fontSize: 14,
+                    fontWeight: FontWeight.normal,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
                 _iconBtn(Icons.close, widget.game.closeInventory),
               ],
             ),
@@ -327,9 +352,7 @@ class _InventoryOverlayState extends State<InventoryOverlay> {
               fit: BoxFit.fill,
             ),
             if (!slot.isEmpty) ...[
-              Center(
-                child: _slotIcon(slot.type!, 24),
-              ),
+              Center(child: _slotIcon(slot.type!, 24)),
               Positioned(
                 right: 2,
                 bottom: 1,
@@ -340,9 +363,7 @@ class _InventoryOverlayState extends State<InventoryOverlay> {
                     color: Colors.white,
                     fontWeight: FontWeight.bold,
                     decoration: TextDecoration.none,
-                    shadows: [
-                      Shadow(offset: Offset(1, 1), blurRadius: 1),
-                    ],
+                    shadows: [Shadow(offset: Offset(1, 1), blurRadius: 1)],
                   ),
                 ),
               ),
@@ -373,17 +394,22 @@ class _InventoryOverlayState extends State<InventoryOverlay> {
     if (summary.isEmpty) {
       return const Padding(
         padding: EdgeInsets.all(8),
-        child: Text('No items to sell',
-            style: TextStyle(
-                color: Colors.white38,
-                fontSize: 12,
-                decoration: TextDecoration.none,
-                fontWeight: FontWeight.normal)),
+        child: Text(
+          'No items to sell',
+          style: TextStyle(
+            color: Colors.white38,
+            fontSize: 12,
+            decoration: TextDecoration.none,
+            fontWeight: FontWeight.normal,
+          ),
+        ),
       );
     }
 
     return Column(
-      children: summary.entries.map((e) => _buildSellRow(e.key, e.value)).toList(),
+      children: summary.entries
+          .map((e) => _buildSellRow(e.key, e.value))
+          .toList(),
     );
   }
 
@@ -404,10 +430,11 @@ class _InventoryOverlayState extends State<InventoryOverlay> {
             child: Text(
               '${spec.name} x$total',
               style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 11,
-                  decoration: TextDecoration.none,
-                  fontWeight: FontWeight.normal),
+                color: Colors.white,
+                fontSize: 11,
+                decoration: TextDecoration.none,
+                fontWeight: FontWeight.normal,
+              ),
             ),
           ),
           _smallBtn('-10', () => _setSellAmt(type, amt - 10, total)),
@@ -418,10 +445,11 @@ class _InventoryOverlayState extends State<InventoryOverlay> {
             child: Text(
               '$amt',
               style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  decoration: TextDecoration.none),
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                decoration: TextDecoration.none,
+              ),
             ),
           ),
           _smallBtn('+1', () => _setSellAmt(type, amt + 1, total)),
@@ -443,8 +471,10 @@ class _InventoryOverlayState extends State<InventoryOverlay> {
                 padding: const EdgeInsets.symmetric(horizontal: 8),
                 minimumSize: Size.zero,
               ),
-              child: Text('${goldEarned}G',
-                  style: const TextStyle(fontSize: 11)),
+              child: Text(
+                '${goldEarned}G',
+                style: const TextStyle(fontSize: 11),
+              ),
             ),
           ),
         ],
@@ -480,9 +510,91 @@ class _InventoryOverlayState extends State<InventoryOverlay> {
         _buildBuyItemRow(ItemType.bedrockBlock, 1000),
         const SizedBox(height: 6),
 
+        _sectionLabel('Dungeon Token Shop'),
+        _buildDungeonTokenRow(
+          title: 'Max HP +10',
+          desc: 'Permanent',
+          cost: 100,
+          onBuy: _gs.buyDungeonHpUpgrade,
+        ),
+        _buildDungeonTokenRow(
+          title: 'Combat DMG +5%',
+          desc: 'Permanent',
+          cost: 140,
+          onBuy: _gs.buyCombatDamageUpgrade,
+        ),
+        _buildDungeonTokenRow(
+          title: 'Dungeon Shield',
+          desc: 'One-hit shield (next run)',
+          cost: 60,
+          onBuy: _gs.buyDungeonShieldCharge,
+        ),
+        const SizedBox(height: 6),
+
         // Heal
         if (_gs.hp < _gs.maxHp) _buildHealRow(),
       ],
+    );
+  }
+
+  Widget _buildDungeonTokenRow({
+    required String title,
+    required String desc,
+    required int cost,
+    required bool Function() onBuy,
+  }) {
+    final canBuy = _gs.dungeonTokens >= cost;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 11,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+                Text(
+                  desc,
+                  style: const TextStyle(
+                    color: Colors.white38,
+                    fontSize: 10,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(
+            height: 24,
+            child: ElevatedButton(
+              onPressed: canBuy
+                  ? () => setState(() {
+                      onBuy();
+                    })
+                  : null,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF2A3655),
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                minimumSize: Size.zero,
+              ),
+              child: Text(
+                '$cost T',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: canBuy ? const Color(0xFF7AD7FF) : Colors.white24,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -531,11 +643,13 @@ class _InventoryOverlayState extends State<InventoryOverlay> {
                   padding: const EdgeInsets.symmetric(horizontal: 8),
                   minimumSize: Size.zero,
                 ),
-                child: Text('${spec.cost}G',
-                    style: TextStyle(
-                        fontSize: 10,
-                        color:
-                            canBuy ? const Color(0xFFFFD700) : Colors.white24)),
+                child: Text(
+                  '${spec.cost}G',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: canBuy ? const Color(0xFFFFD700) : Colors.white24,
+                  ),
+                ),
               ),
             ),
         ],
@@ -557,12 +671,15 @@ class _InventoryOverlayState extends State<InventoryOverlay> {
             ),
             const SizedBox(width: 6),
             const Expanded(
-              child: Text('Jetpack',
-                  style: TextStyle(
-                      color: Color(0xFFFFD700),
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                      decoration: TextDecoration.none)),
+              child: Text(
+                'Jetpack',
+                style: TextStyle(
+                  color: Color(0xFFFFD700),
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  decoration: TextDecoration.none,
+                ),
+              ),
             ),
             _badge('OWNED', const Color(0xFF4CAF50)),
           ],
@@ -583,30 +700,32 @@ class _InventoryOverlayState extends State<InventoryOverlay> {
           ),
           const SizedBox(width: 6),
           const Expanded(
-            child: Text('Jetpack  (Hold jump to fly)',
-                style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 11,
-                    fontWeight: FontWeight.normal,
-                    decoration: TextDecoration.none)),
+            child: Text(
+              'Jetpack  (Hold jump to fly)',
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: 11,
+                fontWeight: FontWeight.normal,
+                decoration: TextDecoration.none,
+              ),
+            ),
           ),
           SizedBox(
             height: 24,
             child: ElevatedButton(
-              onPressed: canBuy
-                  ? () => setState(() => _gs.buyJetpack())
-                  : null,
+              onPressed: canBuy ? () => setState(() => _gs.buyJetpack()) : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF333333),
                 padding: const EdgeInsets.symmetric(horizontal: 8),
                 minimumSize: Size.zero,
               ),
-              child: Text('2000G',
-                  style: TextStyle(
-                      fontSize: 10,
-                      color: canBuy
-                          ? const Color(0xFFFFD700)
-                          : Colors.white24)),
+              child: Text(
+                '2000G',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: canBuy ? const Color(0xFFFFD700) : Colors.white24,
+                ),
+              ),
             ),
           ),
         ],
@@ -634,10 +753,11 @@ class _InventoryOverlayState extends State<InventoryOverlay> {
               child: Text(
                 'Fuel: ${fuel.round()} / ${max.round()} (FULL)',
                 style: const TextStyle(
-                    color: Colors.white38,
-                    fontSize: 10,
-                    decoration: TextDecoration.none,
-                    fontWeight: FontWeight.normal),
+                  color: Colors.white38,
+                  fontSize: 10,
+                  decoration: TextDecoration.none,
+                  fontWeight: FontWeight.normal,
+                ),
               ),
             ),
           ],
@@ -661,10 +781,11 @@ class _InventoryOverlayState extends State<InventoryOverlay> {
             child: Text(
               'Fuel: ${fuel.round()} / ${max.round()}',
               style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 10,
-                  decoration: TextDecoration.none,
-                  fontWeight: FontWeight.normal),
+                color: Colors.white70,
+                fontSize: 10,
+                decoration: TextDecoration.none,
+                fontWeight: FontWeight.normal,
+              ),
             ),
           ),
           SizedBox(
@@ -678,8 +799,10 @@ class _InventoryOverlayState extends State<InventoryOverlay> {
                 padding: const EdgeInsets.symmetric(horizontal: 8),
                 minimumSize: Size.zero,
               ),
-              child: Text('Refill ${missing}G',
-                  style: const TextStyle(fontSize: 10)),
+              child: Text(
+                'Refill ${missing}G',
+                style: const TextStyle(fontSize: 10),
+              ),
             ),
           ),
         ],
@@ -700,10 +823,11 @@ class _InventoryOverlayState extends State<InventoryOverlay> {
             child: Text(
               spec.name,
               style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 11,
-                  decoration: TextDecoration.none,
-                  fontWeight: FontWeight.normal),
+                color: Colors.white70,
+                fontSize: 11,
+                decoration: TextDecoration.none,
+                fontWeight: FontWeight.normal,
+              ),
             ),
           ),
           SizedBox(
@@ -717,12 +841,13 @@ class _InventoryOverlayState extends State<InventoryOverlay> {
                 padding: const EdgeInsets.symmetric(horizontal: 8),
                 minimumSize: Size.zero,
               ),
-              child: Text('${unitCost}G',
-                  style: TextStyle(
-                      fontSize: 10,
-                      color: canBuy
-                          ? const Color(0xFFFFD700)
-                          : Colors.white24)),
+              child: Text(
+                '${unitCost}G',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: canBuy ? const Color(0xFFFFD700) : Colors.white24,
+                ),
+              ),
             ),
           ),
           const SizedBox(width: 4),
@@ -737,12 +862,15 @@ class _InventoryOverlayState extends State<InventoryOverlay> {
                 padding: const EdgeInsets.symmetric(horizontal: 8),
                 minimumSize: Size.zero,
               ),
-              child: Text('x10 ${unitCost * 10}G',
-                  style: TextStyle(
-                      fontSize: 10,
-                      color: _gs.gold >= unitCost * 10
-                          ? const Color(0xFFFFD700)
-                          : Colors.white24)),
+              child: Text(
+                'x10 ${unitCost * 10}G',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: _gs.gold >= unitCost * 10
+                      ? const Color(0xFFFFD700)
+                      : Colors.white24,
+                ),
+              ),
             ),
           ),
         ],
@@ -759,21 +887,24 @@ class _InventoryOverlayState extends State<InventoryOverlay> {
       child: Row(
         children: [
           Expanded(
-            child: Text('Heal $missing HP',
-                style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 11,
-                    decoration: TextDecoration.none,
-                    fontWeight: FontWeight.normal)),
+            child: Text(
+              'Heal $missing HP',
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 11,
+                decoration: TextDecoration.none,
+                fontWeight: FontWeight.normal,
+              ),
+            ),
           ),
           SizedBox(
             height: 26,
             child: ElevatedButton(
               onPressed: canHeal
                   ? () => setState(() {
-                        _gs.gold -= cost;
-                        _gs.hp = _gs.maxHp;
-                      })
+                      _gs.gold -= cost;
+                      _gs.hp = _gs.maxHp;
+                    })
                   : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFFFF4444),
@@ -791,65 +922,74 @@ class _InventoryOverlayState extends State<InventoryOverlay> {
   // ── Helpers ────────────────────────────────────────────────────────────
 
   Widget _sectionLabel(String text) => Padding(
-        padding: const EdgeInsets.only(bottom: 3),
-        child: Align(
-          alignment: Alignment.centerLeft,
-          child: Text(text,
-              style: const TextStyle(
-                  color: Colors.white38,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  decoration: TextDecoration.none)),
+    padding: const EdgeInsets.only(bottom: 3),
+    child: Align(
+      alignment: Alignment.centerLeft,
+      child: Text(
+        text,
+        style: const TextStyle(
+          color: Colors.white38,
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+          decoration: TextDecoration.none,
         ),
-      );
+      ),
+    ),
+  );
 
   Widget _smallBtn(String label, VoidCallback onTap) => InkWell(
-        onTap: onTap,
-        child: Container(
-          width: 28,
-          height: 22,
-          alignment: Alignment.center,
-          margin: const EdgeInsets.symmetric(horizontal: 1),
-          decoration: BoxDecoration(
-            color: const Color(0xFF333333),
-            borderRadius: BorderRadius.circular(3),
-          ),
-          child: Text(label,
-              style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 9,
-                  decoration: TextDecoration.none,
-                  fontWeight: FontWeight.normal)),
+    onTap: onTap,
+    child: Container(
+      width: 28,
+      height: 22,
+      alignment: Alignment.center,
+      margin: const EdgeInsets.symmetric(horizontal: 1),
+      decoration: BoxDecoration(
+        color: const Color(0xFF333333),
+        borderRadius: BorderRadius.circular(3),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Colors.white70,
+          fontSize: 9,
+          decoration: TextDecoration.none,
+          fontWeight: FontWeight.normal,
         ),
-      );
+      ),
+    ),
+  );
 
   Widget _iconBtn(IconData icon, VoidCallback onTap) => InkWell(
-        onTap: onTap,
-        child: Container(
-          width: 28,
-          height: 28,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: const Color(0xFF333333),
-            borderRadius: BorderRadius.circular(4),
-          ),
-          child: Icon(icon, color: Colors.white70, size: 18),
-        ),
-      );
+    onTap: onTap,
+    child: Container(
+      width: 28,
+      height: 28,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: const Color(0xFF333333),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Icon(icon, color: Colors.white70, size: 18),
+    ),
+  );
 
   Widget _badge(String text, Color c) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(3),
-          border: Border.all(color: c),
-        ),
-        child: Text(text,
-            style: TextStyle(
-                color: c,
-                fontSize: 9,
-                decoration: TextDecoration.none,
-                fontWeight: FontWeight.normal)),
-      );
+    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+    decoration: BoxDecoration(
+      borderRadius: BorderRadius.circular(3),
+      border: Border.all(color: c),
+    ),
+    child: Text(
+      text,
+      style: TextStyle(
+        color: c,
+        fontSize: 9,
+        decoration: TextDecoration.none,
+        fontWeight: FontWeight.normal,
+      ),
+    ),
+  );
 
   Widget _slotIcon(ItemType type, double size) {
     final path = itemIconPaths[type];

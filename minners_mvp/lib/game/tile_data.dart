@@ -173,3 +173,9 @@ bool isOre(TileType t) =>
     t == TileType.iron ||
     t == TileType.gold ||
     t == TileType.diamond;
+
+int oreXpForTile(TileType t) {
+  if (!isOre(t)) return 0;
+  // Scale XP with ore value (rarity/value driven)
+  return tileSpecs[t]!.sellValue * 2;
+}

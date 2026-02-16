@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'dart:ui' as ui;
 
 import 'package:flame/components.dart';
@@ -5,6 +6,7 @@ import 'package:flame/events.dart';
 import 'package:flame/experimental.dart';
 import 'package:flame/game.dart';
 import 'package:flame/input.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -19,6 +21,11 @@ import 'world_manager.dart';
 import 'hud_component.dart';
 import 'tnt_component.dart';
 import 'teleport_door.dart';
+import 'monster_component.dart';
+import 'dungeon_portal.dart';
+import 'dungeon_types.dart';
+import 'dungeon_run.dart';
+import 'attack_range_effect_component.dart';
 
 /// Outline drawn on the tile the player is currently facing,
 /// with a green clockwise progress indicator for mining.
@@ -119,12 +126,24 @@ class _CameraTarget extends PositionComponent {
   }
 }
 
+enum DungeonFlowState {
+  surface,
+  selectingType,
+  entering,
+  activeWave,
+  betweenWaves,
+  cleared,
+  escaping,
+  recovering,
+}
+
 class MiningGame extends FlameGame with TapCallbacks {
   final SaveData? initialSaveData;
   final GameState gameState = GameState();
   late final WorldManager worldManager;
   late final PlayerComponent player;
   late final CameraComponent gameCamera;
+  late final World gameWorld;
   late final _CameraTarget _cameraTarget;
   late final _FacingOutline _facingOutline;
   JoystickComponent? _joystick;
@@ -136,6 +155,8 @@ class MiningGame extends FlameGame with TapCallbacks {
   late final Sprite _tntSprite;
   late final List<Sprite> _portalFrames;
   late final List<Sprite> _explosionFrames;
+  late final Map<MonsterKind, Map<MonsterAnim, SpriteAnimation>>
+  _monsterAnimations;
 
   double _kbAxis = 0;
   bool _loaded = false;
@@ -148,6 +169,8 @@ class MiningGame extends FlameGame with TapCallbacks {
   // Auto-save
   double _autoSaveTimer = 0;
   static const double autoSaveInterval = 120.0;
+  static const double playerAttackCooldown = 0.28;
+  double _playerAttackCooldownTimer = 0;
 
   // Hold-to-mine state
   bool _btnMineHeld = false; // mobile mine button held
@@ -163,11 +186,31 @@ class MiningGame extends FlameGame with TapCallbacks {
   final List<TeleportDoor> doors = [];
   int _nextDoorId = 1;
   TeleportDoor? interactingDoor;
+  DungeonPortal? interactingPortal;
+
+  // Dungeon Persistence
+  List<Map<String, dynamic>>? _savedOverworldTiles;
+  Vector2? _savedPlayerPos;
+  List<Map<String, dynamic>>? _savedDungeonTiles;
+  Vector2? _savedDungeonPlayerPos;
+  DungeonFlowState _dungeonFlowState = DungeonFlowState.surface;
+  DungeonRunResult? _lastDungeonResult;
+  final Random _rng = Random();
+  double _runElapsedSeconds = 0;
+  int _lastObservedHp = 0;
+
+  static Vector2 get _surfacePortalPos =>
+      Vector2(300, (skyRows - 2) * tileSize.toDouble());
+
+  bool get _showTouchControls =>
+      defaultTargetPlatform == TargetPlatform.android ||
+      defaultTargetPlatform == TargetPlatform.iOS;
 
   MiningGame({this.initialSaveData});
 
   Inventory get inventory => gameState.inventory;
   bool get isPaused => _paused;
+  DungeonRunResult? get lastDungeonResult => _lastDungeonResult;
 
   // ── Lifecycle ────────────────────────────────────────────────────────────
 
@@ -206,6 +249,37 @@ class MiningGame extends FlameGame with TapCallbacks {
       'player/gear_pickaxe.png',
       'player/gear_drill.png',
       'player/gear_jetpack.png',
+      'player/gear_sword.png',
+      'monsters/1 Pink_Monster/Pink_Monster_Idle_4.png',
+      'monsters/1 Pink_Monster/Pink_Monster_Walk_6.png',
+      'monsters/1 Pink_Monster/Pink_Monster_Jump_8.png',
+      'monsters/1 Pink_Monster/Pink_Monster_Attack1_4.png',
+      'monsters/1 Pink_Monster/Pink_Monster_Hurt_4.png',
+      'monsters/1 Pink_Monster/Pink_Monster_Death_8.png',
+      'monsters/2 Owlet_Monster/Owlet_Monster_Idle_4.png',
+      'monsters/2 Owlet_Monster/Owlet_Monster_Walk_6.png',
+      'monsters/2 Owlet_Monster/Owlet_Monster_Jump_8.png',
+      'monsters/2 Owlet_Monster/Owlet_Monster_Attack1_4.png',
+      'monsters/2 Owlet_Monster/Owlet_Monster_Hurt_4.png',
+      'monsters/2 Owlet_Monster/Owlet_Monster_Death_8.png',
+      'monsters/3 Dude_Monster/Dude_Monster_Idle_4.png',
+      'monsters/3 Dude_Monster/Dude_Monster_Walk_6.png',
+      'monsters/3 Dude_Monster/Dude_Monster_Jump_8.png',
+      'monsters/3 Dude_Monster/Dude_Monster_Attack1_4.png',
+      'monsters/3 Dude_Monster/Dude_Monster_Hurt_4.png',
+      'monsters/3 Dude_Monster/Dude_Monster_Death_8.png',
+      // UI Icons
+      'items/block_gold.png',
+      'items/fuel.png',
+      'items/block_bedrock.png',
+      'items/pickaxe_wood.png',
+      'items/pickaxe_stone.png',
+      'items/pickaxe_iron.png',
+      'items/pickaxe_gold.png',
+      'items/pickaxe_diamond.png',
+      'items/drill_mk1.png',
+      'items/drill_mk2.png',
+      'items/drill_mk3.png',
     ]);
 
     final tileSprites = <TileType, Sprite>{
@@ -230,13 +304,30 @@ class MiningGame extends FlameGame with TapCallbacks {
     );
 
     final playerSheet = images.fromCache('player/Sprite-0001-sheet.png');
-    _playerRight = Sprite(playerSheet, srcPosition: Vector2(0, 0), srcSize: Vector2(24, 24));
-    _playerFront = Sprite(playerSheet, srcPosition: Vector2(26, 0), srcSize: Vector2(24, 24));
-    _playerUpRight = Sprite(playerSheet, srcPosition: Vector2(52, 0), srcSize: Vector2(24, 24));
-    _playerUp = Sprite(playerSheet, srcPosition: Vector2(78, 0), srcSize: Vector2(24, 24));
+    _playerRight = Sprite(
+      playerSheet,
+      srcPosition: Vector2(0, 0),
+      srcSize: Vector2(24, 24),
+    );
+    _playerFront = Sprite(
+      playerSheet,
+      srcPosition: Vector2(26, 0),
+      srcSize: Vector2(24, 24),
+    );
+    _playerUpRight = Sprite(
+      playerSheet,
+      srcPosition: Vector2(52, 0),
+      srcSize: Vector2(24, 24),
+    );
+    _playerUp = Sprite(
+      playerSheet,
+      srcPosition: Vector2(78, 0),
+      srcSize: Vector2(24, 24),
+    );
     final gearPickaxe = Sprite(images.fromCache('player/gear_pickaxe.png'));
     final gearDrill = Sprite(images.fromCache('player/gear_drill.png'));
     final gearJetpack = Sprite(images.fromCache('player/gear_jetpack.png'));
+    final gearSword = Sprite(images.fromCache('player/gear_sword.png'));
     _tntSprite = Sprite(images.fromCache('objects/tnt.png'));
     _portalFrames = [
       Sprite(images.fromCache('objects/portal_0.png')),
@@ -250,8 +341,9 @@ class MiningGame extends FlameGame with TapCallbacks {
       Sprite(images.fromCache('objects/explosion_2.png')),
       Sprite(images.fromCache('objects/explosion_3.png')),
     ];
+    _monsterAnimations = _buildMonsterAnimations();
 
-    final gameWorld = World();
+    gameWorld = World();
     gameCamera = CameraComponent.withFixedResolution(
       world: gameWorld,
       width: 640,
@@ -272,11 +364,16 @@ class MiningGame extends FlameGame with TapCallbacks {
     // Underground backgrounds (3 depth zones)
     const zone1Rows = 65; // shallow: rows 5–69
     const zone2Rows = 65; // medium:  rows 70–134
-    final zone3Rows = worldHeight - skyRows - zone1Rows - zone2Rows; // deep: rest
+    final zone3Rows =
+        worldHeight - skyRows - zone1Rows - zone2Rows; // deep: rest
     final bgZones = <(String, int, int)>[
       ('backgrounds/underground_1.png', skyRows, zone1Rows),
       ('backgrounds/underground_2.png', skyRows + zone1Rows, zone2Rows),
-      ('backgrounds/underground_3.png', skyRows + zone1Rows + zone2Rows, zone3Rows),
+      (
+        'backgrounds/underground_3.png',
+        skyRows + zone1Rows + zone2Rows,
+        zone3Rows,
+      ),
     ];
     for (final (path, startRow, rows) in bgZones) {
       gameWorld.add(
@@ -300,7 +397,10 @@ class MiningGame extends FlameGame with TapCallbacks {
     // Player
     final startPos = initialSaveData != null
         ? Vector2(initialSaveData!.playerX, initialSaveData!.playerY)
-        : Vector2(worldWidth * tileSize / 2, (skyRows - 2) * tileSize.toDouble());
+        : Vector2(
+            worldWidth * tileSize / 2,
+            (skyRows - 2) * tileSize.toDouble(),
+          );
     player = PlayerComponent(
       position: startPos,
       spriteRight: _playerRight,
@@ -310,6 +410,7 @@ class MiningGame extends FlameGame with TapCallbacks {
       gearPickaxe: gearPickaxe,
       gearDrill: gearDrill,
       gearJetpack: gearJetpack,
+      gearSword: gearSword,
     );
     gameWorld.add(player);
 
@@ -324,14 +425,84 @@ class MiningGame extends FlameGame with TapCallbacks {
         'maxHp': sd.maxHp,
         'gold': sd.gold,
         'pickaxeTier': sd.pickaxeTier,
+        'level': sd.level,
+        'xp': sd.xp,
+        'dungeonTokens': sd.dungeonTokens,
+        'combatDamageBonusLevel': sd.combatDamageBonusLevel,
+        'dungeonShieldCharges': sd.dungeonShieldCharges,
         'hasJetpack': sd.hasJetpack,
         'jetpackFuel': sd.jetpackFuel,
         'jetpackMaxFuel': sd.jetpackMaxFuel,
+        'worldMode': sd.worldMode,
       });
       gameState.inventory.loadFromJson(sd.inventorySlots);
       gameState.inventory.select(sd.selectedHotbar);
       _playtimeSeconds = sd.playtimeSeconds.toDouble();
       _currentSaveId = sd.id;
+      if (sd.lastDungeonType != null) {
+        final dt = DungeonType.values.firstWhere(
+          (t) => t.name == sd.lastDungeonType,
+          orElse: () => DungeonType.cavern,
+        );
+        _lastDungeonResult = DungeonRunResult(
+          type: dt,
+          cleared: false,
+          reachedWave: sd.lastClearedWave ?? 0,
+          earnedTokens: 0,
+          lostTokens: 0,
+          finalTokens: 0,
+        );
+      }
+      if (gameState.inDungeon && sd.activeDungeonType != null) {
+        final dt = DungeonType.values.firstWhere(
+          (t) => t.name == sd.activeDungeonType,
+          orElse: () => DungeonType.cavern,
+        );
+        final run = DungeonRunState(
+          type: dt,
+          totalWaves: dungeonTypeSpecs[dt]!.totalWaves,
+        );
+        run.currentWave = sd.activeDungeonWave ?? 1;
+        run.runTokenEarned = sd.activeDungeonRunToken ?? 0;
+        run.runDamageTaken = sd.activeDungeonRunDamage ?? 0;
+        run.waveStartDamageTaken = run.runDamageTaken;
+        run.waveStartTime = sd.activeDungeonElapsed ?? 0;
+        gameState.activeDungeonRun = run;
+        _runElapsedSeconds = sd.activeDungeonElapsed ?? 0;
+      }
+      _savedOverworldTiles = sd.overworldSnapshot;
+      _savedDungeonTiles = sd.dungeonSnapshot;
+      if (sd.overworldPlayerX != null && sd.overworldPlayerY != null) {
+        _savedPlayerPos = Vector2(sd.overworldPlayerX!, sd.overworldPlayerY!);
+      }
+      if (sd.dungeonPlayerX != null && sd.dungeonPlayerY != null) {
+        _savedDungeonPlayerPos = Vector2(
+          sd.dungeonPlayerX!,
+          sd.dungeonPlayerY!,
+        );
+      }
+      _dungeonFlowState = gameState.inDungeon
+          ? DungeonFlowState.activeWave
+          : DungeonFlowState.surface;
+      if (gameState.inDungeon && gameState.activeDungeonRun == null) {
+        final fallback = DungeonType.cavern;
+        gameState.activeDungeonRun = DungeonRunState(
+          type: fallback,
+          totalWaves: dungeonTypeSpecs[fallback]!.totalWaves,
+        )..currentWave = 1;
+      }
+      if (gameState.inDungeon && _savedOverworldTiles == null) {
+        final activeDungeonTiles = worldManager.tilesToJson();
+        worldManager.generate();
+        _savedOverworldTiles = worldManager.tilesToJson();
+        worldManager.loadFromJson(activeDungeonTiles);
+        _savedPlayerPos =
+            _savedPlayerPos ??
+            Vector2(
+              worldWidth * tileSize / 2,
+              (skyRows - 2) * tileSize.toDouble(),
+            );
+      }
 
       // Restore teleport doors
       for (final doorData in sd.doors) {
@@ -344,10 +515,13 @@ class MiningGame extends FlameGame with TapCallbacks {
           animation: _buildPortalAnimation(),
         );
         doors.add(door);
-        gameWorld.add(door);
+        if (!gameState.inDungeon) {
+          gameWorld.add(door);
+        }
       }
       if (doors.isNotEmpty) {
-        _nextDoorId = doors.map((d) => d.id).reduce((a, b) => a > b ? a : b) + 1;
+        _nextDoorId =
+            doors.map((d) => d.id).reduce((a, b) => a > b ? a : b) + 1;
       }
     }
 
@@ -364,65 +538,82 @@ class MiningGame extends FlameGame with TapCallbacks {
       Rectangle.fromLTWH(0, 0, worldWidth * tileSize, worldHeight * tileSize),
     );
 
+    if (initialSaveData == null) {
+      _ensureSurfacePortal();
+    } else if (!gameState.inDungeon) {
+      _ensureSurfacePortal();
+    } else {
+      _removeAllSurfaceEntities();
+      gameWorld.children.whereType<DungeonPortal>().forEach(
+        (p) => p.removeFromParent(),
+      );
+    }
+
     // ── Controls ───────────────────────────────────────────────────────────
-    final joystick = JoystickComponent(
-      knob: CircleComponent(
-        radius: 20,
-        paint: Paint()..color = const Color(0xBBFFFFFF),
-      ),
-      background: CircleComponent(
-        radius: 44,
-        paint: Paint()..color = const Color(0x55FFFFFF),
-      ),
-      margin: const EdgeInsets.only(left: 20, bottom: 20),
-    );
-    _joystick = joystick;
-
-    final jumpBtn = HudButtonComponent(
-      button: CircleComponent(
-        radius: 26,
-        paint: Paint()..color = const Color(0xAAFFD166),
-      ),
-      buttonDown: CircleComponent(
-        radius: 26,
-        paint: Paint()..color = const Color(0xFFFFB703),
-      ),
-      margin: const EdgeInsets.only(right: 20, bottom: 28),
-      onPressed: () => _btnJumpHeld = true,
-      onReleased: () => _btnJumpHeld = false,
-    );
-
-    final mineBtn = HudButtonComponent(
-      button: CircleComponent(
-        radius: 22,
-        paint: Paint()..color = const Color(0xAAFF6B6B),
-      ),
-      buttonDown: CircleComponent(
-        radius: 22,
-        paint: Paint()..color = const Color(0xFFFF4444),
-      ),
-      margin: const EdgeInsets.only(right: 80, bottom: 34),
-      onPressed: () => _btnMineHeld = true,
-      onReleased: () => _btnMineHeld = false,
-    );
-
-    final placeBtn = HudButtonComponent(
-      button: CircleComponent(
-        radius: 22,
-        paint: Paint()..color = const Color(0xAA6BCB77),
-      ),
-      buttonDown: CircleComponent(
-        radius: 22,
-        paint: Paint()..color = const Color(0xFF4CAF50),
-      ),
-      margin: const EdgeInsets.only(right: 140, bottom: 34),
-      onPressed: _placeFacing,
-    );
-
     final hud = HudComponent();
     _hud = hud;
 
-    gameCamera.viewport.addAll([joystick, jumpBtn, mineBtn, placeBtn, hud]);
+    if (_showTouchControls) {
+      final joystick = JoystickComponent(
+        knob: CircleComponent(
+          radius: 20,
+          paint: Paint()..color = const Color(0xBBFFFFFF),
+        ),
+        background: CircleComponent(
+          radius: 44,
+          paint: Paint()..color = const Color(0x55FFFFFF),
+        ),
+        margin: const EdgeInsets.only(left: 20, bottom: 20),
+      );
+      _joystick = joystick;
+
+      final jumpBtn = HudButtonComponent(
+        button: CircleComponent(
+          radius: 26,
+          paint: Paint()..color = const Color(0xAAFFD166),
+        ),
+        buttonDown: CircleComponent(
+          radius: 26,
+          paint: Paint()..color = const Color(0xFFFFB703),
+        ),
+        margin: const EdgeInsets.only(right: 20, bottom: 28),
+        onPressed: () => _btnJumpHeld = true,
+        onReleased: () => _btnJumpHeld = false,
+      );
+
+      final mineBtn = HudButtonComponent(
+        button: CircleComponent(
+          radius: 22,
+          paint: Paint()..color = const Color(0xAAFF6B6B),
+        ),
+        buttonDown: CircleComponent(
+          radius: 22,
+          paint: Paint()..color = const Color(0xFFFF4444),
+        ),
+        margin: const EdgeInsets.only(right: 80, bottom: 34),
+        onPressed: () => _btnMineHeld = true,
+        onReleased: () => _btnMineHeld = false,
+      );
+
+      final placeBtn = HudButtonComponent(
+        button: CircleComponent(
+          radius: 22,
+          paint: Paint()..color = const Color(0xAA6BCB77),
+        ),
+        buttonDown: CircleComponent(
+          radius: 22,
+          paint: Paint()..color = const Color(0xFF4CAF50),
+        ),
+        margin: const EdgeInsets.only(right: 140, bottom: 34),
+        onPressed: _placeFacing,
+      );
+
+      gameCamera.viewport.addAll([joystick, jumpBtn, mineBtn, placeBtn, hud]);
+    } else {
+      _joystick = null;
+      gameCamera.viewport.add(hud);
+    }
+    _lastObservedHp = gameState.hp;
     _loaded = true;
   }
 
@@ -448,6 +639,21 @@ class MiningGame extends FlameGame with TapCallbacks {
     if (!_loaded || _paused) return;
 
     _playtimeSeconds += dt;
+    final hpDrop = _lastObservedHp - gameState.hp;
+    if (hpDrop > 0) {
+      player.triggerDamageFlash();
+    }
+    if (gameState.activeDungeonRun != null) {
+      _runElapsedSeconds += dt;
+      if (hpDrop > 0) {
+        gameState.activeDungeonRun!.onDamageTaken(hpDrop);
+      }
+    }
+    _lastObservedHp = gameState.hp;
+    if (_playerAttackCooldownTimer > 0) {
+      _playerAttackCooldownTimer =
+          (_playerAttackCooldownTimer - dt).clamp(0.0, playerAttackCooldown);
+    }
 
     // Auto-save
     _autoSaveTimer += dt;
@@ -460,8 +666,9 @@ class MiningGame extends FlameGame with TapCallbacks {
 
     // ── Movement & facing ─────────────────────────────────────────────────
     if (!inventoryOpen) {
-      final jx = _joystick!.relativeDelta.x.clamp(-1.0, 1.0);
-      final jy = _joystick!.relativeDelta.y.clamp(-1.0, 1.0);
+      final joystickDelta = _joystick?.relativeDelta ?? Vector2.zero();
+      final jx = joystickDelta.x.clamp(-1.0, 1.0);
+      final jy = joystickDelta.y.clamp(-1.0, 1.0);
       player.setMoveInput(jx.abs() > 0.1 ? jx : _kbAxis);
 
       // Joystick → set facing (including diagonals)
@@ -482,13 +689,17 @@ class MiningGame extends FlameGame with TapCallbacks {
       }
 
       // Keyboard facing (overrides joystick if pressed)
-      final kbUp = pressed.contains(LogicalKeyboardKey.keyW) ||
+      final kbUp =
+          pressed.contains(LogicalKeyboardKey.keyW) ||
           pressed.contains(LogicalKeyboardKey.arrowUp);
-      final kbDown = pressed.contains(LogicalKeyboardKey.keyS) ||
+      final kbDown =
+          pressed.contains(LogicalKeyboardKey.keyS) ||
           pressed.contains(LogicalKeyboardKey.arrowDown);
-      final kbLeft = pressed.contains(LogicalKeyboardKey.keyA) ||
+      final kbLeft =
+          pressed.contains(LogicalKeyboardKey.keyA) ||
           pressed.contains(LogicalKeyboardKey.arrowLeft);
-      final kbRight = pressed.contains(LogicalKeyboardKey.keyD) ||
+      final kbRight =
+          pressed.contains(LogicalKeyboardKey.keyD) ||
           pressed.contains(LogicalKeyboardKey.arrowRight);
 
       // Diagonal combinations
@@ -510,31 +721,38 @@ class MiningGame extends FlameGame with TapCallbacks {
     }
 
     // Jump held = keyboard OR mobile button
-    final kbJump =
-        !inventoryOpen &&
-        pressed.contains(LogicalKeyboardKey.space);
+    final kbJump = !inventoryOpen && pressed.contains(LogicalKeyboardKey.space);
     player.jumpHeld = kbJump || _btnJumpHeld;
 
-    // ── Continuous mining (mine button / left-click only) ─────────────────
+    // ── Continuous mining OR Combat (mine button / left-click only) ─────────────────
     int curMineTx = -1, curMineTy = -1;
+    final isCombat = gameState.isCombatMode;
 
     if (_tapMineHeld) {
       // Left-click hold takes priority
-      if (worldManager.hasTileAt(_tapMineTx, _tapMineTy)) {
-        curMineTx = _tapMineTx;
-        curMineTy = _tapMineTy;
-        _tryMineDps(_tapMineTx, _tapMineTy, dt);
+      if (isCombat) {
+        _tryAttack(dt, _tapMineTx, _tapMineTy);
       } else {
-        _tapMineHeld = false;
+        if (worldManager.hasTileAt(_tapMineTx, _tapMineTy)) {
+          curMineTx = _tapMineTx;
+          curMineTy = _tapMineTy;
+          _tryMineDps(_tapMineTx, _tapMineTy, dt);
+        } else {
+          _tapMineHeld = false;
+        }
       }
     } else if (!inventoryOpen &&
         (_btnMineHeld ||
             pressed.contains(LogicalKeyboardKey.shiftLeft) ||
             pressed.contains(LogicalKeyboardKey.shiftRight))) {
-      final (tx, ty) = _facingTile();
-      curMineTx = tx;
-      curMineTy = ty;
-      _tryMineDps(tx, ty, dt);
+      if (isCombat) {
+        _tryAttack(dt, -1, -1); // Auto-target facing
+      } else {
+        final (tx, ty) = _facingTile();
+        curMineTx = tx;
+        curMineTy = ty;
+        _tryMineDps(tx, ty, dt);
+      }
     }
 
     // Reset partially-mined tile when target changes or mining stops
@@ -562,10 +780,69 @@ class MiningGame extends FlameGame with TapCallbacks {
     _hud?.updateFrom(gameState, player.depth);
 
     if (gameState.isDead && !overlays.isActive('death')) {
-      gameState.die();
-      player.respawnAtSurface();
-      overlays.add('death');
+      final wasDungeonDeath = gameState.inDungeon;
+      if (wasDungeonDeath) {
+        _handleDungeonDeathRecovery();
+      }
+      gameState.die(keepInventory: wasDungeonDeath);
+      if (!gameState.inDungeon) {
+        if (_savedPlayerPos != null) {
+          player.position = _savedPlayerPos!.clone();
+        } else {
+          player.respawnAtSurface();
+        }
+      }
+      if (!wasDungeonDeath) {
+        overlays.add('death');
+      }
     }
+
+    _checkDungeonClear();
+  }
+
+  void _checkDungeonClear() {
+    if (_dungeonFlowState != DungeonFlowState.activeWave) return;
+    if (!gameState.inDungeon) return;
+    final run = gameState.activeDungeonRun;
+    if (run == null) return;
+    final spec = dungeonTypeSpecs[run.type]!;
+
+    final monsters = gameWorld.children.whereType<MonsterComponent>().toList();
+    if (monsters.isNotEmpty) return;
+
+    _dungeonFlowState = DungeonFlowState.betweenWaves;
+    run.completeWave(spec: spec, currentRunTimeSeconds: _runElapsedSeconds);
+
+    if (!run.isCleared) {
+      _startNextWave();
+      return;
+    }
+
+    final result = run.finalizeRun();
+    gameState.dungeonTokens += result.finalTokens;
+    _lastDungeonResult = result;
+    gameState.activeDungeonRun = null;
+    _dungeonFlowState = DungeonFlowState.cleared;
+
+    // Spawn exit portal once all waves are cleared.
+    final exitX =
+        (spec.config.startX + (spec.config.roomWidth ~/ 2) + 1) *
+        tileSize.toDouble();
+    final exitY =
+        (spec.config.startY + (spec.config.roomHeight ~/ 2) + 1) *
+        tileSize.toDouble();
+    final portals = gameWorld.children.whereType<DungeonPortal>();
+    final hasExit = portals.any((p) => p.isExit);
+    if (!hasExit) {
+      gameWorld.add(
+        DungeonPortal(
+          position: Vector2(exitX, exitY),
+          animation: SpriteAnimation.spriteList(_portalFrames, stepTime: 0.1),
+          isExit: true,
+        ),
+      );
+    }
+    overlays.add('dungeon_result');
   }
 
   void _updateFacingOutline() {
@@ -613,9 +890,15 @@ class MiningGame extends FlameGame with TapCallbacks {
       playerY: player.position.y,
       velocityX: player.velocity.x,
       velocityY: player.velocity.y,
+      worldMode: gameState.worldMode.name,
       hp: gameState.hp,
       maxHp: gameState.maxHp,
       gold: gameState.gold,
+      level: gameState.level,
+      xp: gameState.xp,
+      dungeonTokens: gameState.dungeonTokens,
+      combatDamageBonusLevel: gameState.combatDamageBonusLevel,
+      dungeonShieldCharges: gameState.dungeonShieldCharges,
       pickaxeTier: gameState.pickaxeTier.name,
       hasJetpack: gameState.hasJetpack,
       jetpackFuel: gameState.jetpackFuel,
@@ -623,12 +906,41 @@ class MiningGame extends FlameGame with TapCallbacks {
       inventorySlots: gameState.inventory.toJson(),
       selectedHotbar: gameState.inventory.selected,
       tiles: worldManager.tilesToJson(),
+      overworldSnapshot: gameState.inDungeon
+          ? _savedOverworldTiles
+          : worldManager.tilesToJson(),
+      dungeonSnapshot: gameState.inDungeon
+          ? worldManager.tilesToJson()
+          : _savedDungeonTiles,
+      overworldPlayerX: gameState.inDungeon
+          ? _savedPlayerPos?.x
+          : player.position.x,
+      overworldPlayerY: gameState.inDungeon
+          ? _savedPlayerPos?.y
+          : player.position.y,
+      dungeonPlayerX: gameState.inDungeon
+          ? player.position.x
+          : _savedDungeonPlayerPos?.x,
+      dungeonPlayerY: gameState.inDungeon
+          ? player.position.y
+          : _savedDungeonPlayerPos?.y,
+      lastDungeonType: _lastDungeonResult?.type.name,
+      lastClearedWave: _lastDungeonResult?.reachedWave,
+      activeDungeonType: gameState.activeDungeonRun?.type.name,
+      activeDungeonWave: gameState.activeDungeonRun?.currentWave,
+      activeDungeonRunToken: gameState.activeDungeonRun?.runTokenEarned,
+      activeDungeonRunDamage: gameState.activeDungeonRun?.runDamageTaken,
+      activeDungeonElapsed: gameState.activeDungeonRun != null
+          ? _runElapsedSeconds
+          : null,
       doors: doors
-          .map((d) => <String, dynamic>{
-                'id': d.id,
-                'x': d.position.x,
-                'y': d.position.y,
-              })
+          .map(
+            (d) => <String, dynamic>{
+              'id': d.id,
+              'x': d.position.x,
+              'y': d.position.y,
+            },
+          )
           .toList(),
     );
   }
@@ -658,6 +970,15 @@ class MiningGame extends FlameGame with TapCallbacks {
       _tapMineTx = tx;
       _tapMineTy = ty;
     } else {
+      // Check Dungeon Portal
+      final portals = gameWorld.children.whereType<DungeonPortal>();
+      for (final p in portals) {
+        if (p.toRect().contains(wp.toOffset())) {
+          _openDungeonPortalConfirm(p);
+          return;
+        }
+      }
+
       // Left click on empty → interact with teleport door
       final door = _doorAt(tx, ty);
       if (door != null) {
@@ -689,6 +1010,15 @@ class MiningGame extends FlameGame with TapCallbacks {
       // Right click on block → place adjacent on cursor side
       _placeAdjacentToBlock(tx, ty, wp);
     } else {
+      // Check Dungeon Portal
+      final portals = gameWorld.children.whereType<DungeonPortal>();
+      for (final p in portals) {
+        if (p.toRect().contains(wp.toOffset())) {
+          _openDungeonPortalConfirm(p);
+          return;
+        }
+      }
+
       // Right click on empty → place or interact with door
       final door = _doorAt(tx, ty);
       if (door != null) {
@@ -741,9 +1071,237 @@ class MiningGame extends FlameGame with TapCallbacks {
     if (tileType != null) {
       final item = tileDropItem(tileType);
       if (item != null) inventory.addItem(item);
+      final oreXp = oreXpForTile(tileType);
+      if (oreXp > 0) gameState.addXp(oreXp);
       return true;
     }
     return worldManager.hasTileAt(x, y);
+  }
+
+  void _tryAttack(double dt, int tx, int ty) {
+    if (_playerAttackCooldownTimer > 0) return;
+    _playerAttackCooldownTimer = playerAttackCooldown;
+
+    // Visual attack cue
+    player.triggerAttackSwing();
+
+    // Target area
+    Rect attackRect;
+    if (tx >= 0 && ty >= 0) {
+      attackRect = Rect.fromLTWH(
+        tx * tileSize,
+        ty * tileSize,
+        tileSize,
+        tileSize,
+      );
+    } else {
+      final (ftx, fty) = _facingTile();
+      attackRect = Rect.fromLTWH(
+        ftx * tileSize,
+        fty * tileSize,
+        tileSize,
+        tileSize,
+      );
+    }
+    gameWorld.add(
+      AttackRangeEffectComponent(
+        center: Vector2(attackRect.center.dx, attackRect.center.dy),
+        radius: tileSize * 0.75,
+        color: const Color(0xFFFFE082),
+      ),
+    );
+
+    // Check overlap with monsters
+    final monsters = worldManager.world.children.whereType<MonsterComponent>();
+    final attackDamage = (10 * gameState.combatDamageMultiplier).round().clamp(
+      1,
+      9999,
+    );
+    for (final m in monsters) {
+      if (m.toRect().overlaps(attackRect)) {
+        m.takeDamage(attackDamage);
+        // Simple knockback
+        if (m.position != player.position) {
+          final dir = (m.position - player.position).normalized();
+          m.position += dir * 20;
+        }
+      }
+    }
+  }
+
+  List<DungeonTypeSpec> availableDungeonTypes() {
+    return DungeonType.values.map((t) => dungeonTypeSpecs[t]!).toList();
+  }
+
+  void startSelectedDungeon(DungeonType type) {
+    overlays.remove('dungeon_select');
+    interactingPortal = null;
+    final spec = dungeonTypeSpecs[type]!;
+    if (gameState.level < spec.unlockLevel) {
+      return;
+    }
+    _startDungeonRun(type);
+  }
+
+  void cancelDungeonSelection() {
+    overlays.remove('dungeon_select');
+    interactingPortal = null;
+    _dungeonFlowState = DungeonFlowState.surface;
+  }
+
+  void confirmDungeonAction() {
+    if (interactingPortal == null) return;
+
+    if (interactingPortal!.isExit) {
+      _returnToSurface();
+      interactingPortal = null;
+      return;
+    }
+
+    overlays.add('dungeon_select');
+    _dungeonFlowState = DungeonFlowState.selectingType;
+  }
+
+  void cancelDungeonAction() {
+    interactingPortal = null;
+    _dungeonFlowState = DungeonFlowState.surface;
+  }
+
+  void _startDungeonRun(DungeonType type) {
+    if (gameState.inDungeon) return;
+    if (_dungeonFlowState == DungeonFlowState.entering ||
+        _dungeonFlowState == DungeonFlowState.escaping) {
+      return;
+    }
+
+    final spec = dungeonTypeSpecs[type]!;
+    _dungeonFlowState = DungeonFlowState.entering;
+
+    _savedOverworldTiles = worldManager.tilesToJson();
+    _savedPlayerPos = player.position.clone();
+    _savedDungeonTiles = null;
+    _savedDungeonPlayerPos = null;
+
+    if (gameState.dungeonShieldCharges > 0) {
+      gameState.dungeonShieldCharges -= 1;
+      gameState.activeShieldHits = 1;
+    } else {
+      gameState.activeShieldHits = 0;
+    }
+
+    gameState.worldMode = WorldMode.dungeon;
+    _runElapsedSeconds = 0;
+    gameState.activeDungeonRun = DungeonRunState(
+      type: type,
+      totalWaves: spec.totalWaves,
+    );
+
+    _removeAllSurfaceEntities();
+    _removeAllDungeonEntities();
+    gameWorld.children.whereType<MonsterComponent>().forEach((m) {
+      m.removeFromParent();
+    });
+
+    worldManager.generateDungeon(spec.config);
+    _savedDungeonTiles = worldManager.tilesToJson();
+
+    final spawnX =
+        (spec.config.startX + (spec.config.roomWidth ~/ 2) + 1) *
+        tileSize.toDouble();
+    final spawnY =
+        (spec.config.startY + (spec.config.roomHeight ~/ 2) + 1) *
+        tileSize.toDouble();
+    player.position = Vector2(spawnX, spawnY);
+    player.velocity.setZero();
+    _savedDungeonPlayerPos = player.position.clone();
+
+    _startNextWave();
+  }
+
+  void _startNextWave() {
+    final run = gameState.activeDungeonRun;
+    if (run == null) return;
+    final spec = dungeonTypeSpecs[run.type]!;
+
+    gameWorld.children.whereType<MonsterComponent>().forEach((m) {
+      m.removeFromParent();
+    });
+    run.startWave(_runElapsedSeconds);
+    _dungeonFlowState = DungeonFlowState.activeWave;
+    _spawnWaveMonsters(spec, run.currentWave);
+  }
+
+  void _spawnWaveMonsters(DungeonTypeSpec spec, int wave) {
+    final count = spec.spawnCountForWave(wave);
+    final roomLeft = (spec.config.startX + 2) * tileSize.toDouble();
+    final roomRight =
+        (spec.config.startX + spec.config.roomWidth) * tileSize.toDouble();
+    final roomGroundY =
+        (spec.config.startY + spec.config.roomHeight) * tileSize.toDouble();
+
+    final monsters = <MonsterComponent>[];
+    for (var i = 0; i < count; i++) {
+      final kind = _pickMonsterKind(spec.monsterWeights);
+      final x = roomLeft + _rng.nextDouble() * (roomRight - roomLeft);
+      final y = roomGroundY - tileSize * (1.2 + _rng.nextDouble() * 0.5);
+      monsters.add(
+        MonsterComponent(
+          position: Vector2(x, y),
+          kind: kind,
+          animations: _monsterAnimations[kind]!,
+          onDeath: _onDungeonMonsterDeath,
+        ),
+      );
+    }
+    gameWorld.addAll(monsters);
+  }
+
+  MonsterKind _pickMonsterKind(Map<MonsterKind, double> weights) {
+    final total = weights.values.fold<double>(0, (a, b) => a + b);
+    if (total <= 0) return MonsterKind.pink;
+    var roll = _rng.nextDouble() * total;
+    for (final e in weights.entries) {
+      roll -= e.value;
+      if (roll <= 0) return e.key;
+    }
+    return MonsterKind.pink;
+  }
+
+  void _onDungeonMonsterDeath(MonsterComponent _) {
+    // Wave clear is detected in update loop.
+  }
+
+  void _returnToSurface() {
+    if (_dungeonFlowState == DungeonFlowState.escaping) return;
+    if (!gameState.inDungeon) return;
+    _dungeonFlowState = DungeonFlowState.escaping;
+    gameState.worldMode = WorldMode.overworld;
+
+    _savedDungeonTiles = worldManager.tilesToJson();
+    _savedDungeonPlayerPos = player.position.clone();
+    _removeAllDungeonEntities();
+    gameWorld.children.whereType<MonsterComponent>().forEach((m) {
+      m.removeFromParent();
+    });
+
+    if (_savedOverworldTiles != null) {
+      worldManager.loadFromJson(_savedOverworldTiles!);
+      if (_savedPlayerPos != null) {
+        player.position = _savedPlayerPos!;
+      } else {
+        player.respawnAtSurface();
+      }
+    } else {
+      worldManager.generate();
+      player.respawnAtSurface();
+    }
+    player.velocity.setZero();
+    gameState.activeShieldHits = 0;
+    gameState.activeDungeonRun = null;
+    _runElapsedSeconds = 0;
+
+    _restoreSurfaceEntities();
+    _dungeonFlowState = DungeonFlowState.surface;
   }
 
   // ── Placement ─────────────────────────────────────────────────────────
@@ -799,8 +1357,9 @@ class MiningGame extends FlameGame with TapCallbacks {
     final slot = inventory.selectedSlot;
     if (slot.isEmpty) return false;
     final spec = itemSpecs[slot.type!];
-    if (spec == null || !spec.isPlaceable || spec.tileType == null)
+    if (spec == null || !spec.isPlaceable || spec.tileType == null) {
       return false;
+    }
 
     // Blocks must be adjacent to an existing block
     if (!_hasAdjacentBlock(x, y)) return false;
@@ -844,7 +1403,48 @@ class MiningGame extends FlameGame with TapCallbacks {
     );
   }
 
+  Map<MonsterKind, Map<MonsterAnim, SpriteAnimation>>
+  _buildMonsterAnimations() {
+    SpriteAnimation strip(String path, int frames, double stepTime) {
+      return SpriteAnimation.fromFrameData(
+        images.fromCache(path),
+        SpriteAnimationData.sequenced(
+          amount: frames,
+          stepTime: stepTime,
+          textureSize: Vector2.all(32),
+          loop: true,
+        ),
+      );
+    }
+
+    Map<MonsterAnim, SpriteAnimation> setFor(String prefix) {
+      return {
+        MonsterAnim.idle: strip('${prefix}_Idle_4.png', 4, 0.14),
+        MonsterAnim.walk: strip('${prefix}_Walk_6.png', 6, 0.10),
+        MonsterAnim.jump: strip('${prefix}_Jump_8.png', 8, 0.09),
+        MonsterAnim.attack: strip('${prefix}_Attack1_4.png', 4, 0.08),
+        MonsterAnim.hurt: strip('${prefix}_Hurt_4.png', 4, 0.07),
+        MonsterAnim.death: SpriteAnimation.fromFrameData(
+          images.fromCache('${prefix}_Death_8.png'),
+          SpriteAnimationData.sequenced(
+            amount: 8,
+            stepTime: 0.08,
+            textureSize: Vector2.all(32),
+            loop: false,
+          ),
+        ),
+      };
+    }
+
+    return {
+      MonsterKind.pink: setFor('monsters/1 Pink_Monster/Pink_Monster'),
+      MonsterKind.owlet: setFor('monsters/2 Owlet_Monster/Owlet_Monster'),
+      MonsterKind.dude: setFor('monsters/3 Dude_Monster/Dude_Monster'),
+    };
+  }
+
   bool _placeTeleportDoor(int x, int y) {
+    if (gameState.inDungeon) return false;
     final pos = Vector2(x * tileSize, y * tileSize);
     final door = TeleportDoor(
       position: pos,
@@ -899,7 +1499,108 @@ class MiningGame extends FlameGame with TapCallbacks {
 
   // ── Teleport interaction ──────────────────────────────────────────────
 
+  DungeonPortal _newSurfacePortal() {
+    return DungeonPortal(
+      position: _surfacePortalPos.clone(),
+      requiredLevel: 5,
+      animation: SpriteAnimation.spriteList(_portalFrames, stepTime: 0.15),
+    );
+  }
+
+  void _ensureSurfacePortal() {
+    final hasSurface = gameWorld.children.whereType<DungeonPortal>().any(
+      (p) => !p.isExit,
+    );
+    if (!hasSurface) {
+      gameWorld.add(_newSurfacePortal());
+    }
+  }
+
+  void _removeAllSurfaceEntities() {
+    for (final door in doors) {
+      door.removeFromParent();
+    }
+    gameWorld.children
+        .whereType<DungeonPortal>()
+        .where((p) => !p.isExit)
+        .forEach((p) => p.removeFromParent());
+  }
+
+  void _removeAllDungeonEntities() {
+    gameWorld.children
+        .whereType<DungeonPortal>()
+        .where((p) => p.isExit)
+        .forEach((p) => p.removeFromParent());
+  }
+
+  void _restoreSurfaceEntities() {
+    for (final door in doors) {
+      if (door.parent == null) {
+        gameWorld.add(door);
+      }
+    }
+    _ensureSurfacePortal();
+  }
+
+  DungeonPortal? _nearbyDungeonPortal() {
+    for (final portal in gameWorld.children.whereType<DungeonPortal>()) {
+      if (player.center.distanceTo(portal.center) <= tileSize * 1.8) {
+        return portal;
+      }
+    }
+    return null;
+  }
+
+  void _openDungeonPortalConfirm(DungeonPortal portal) {
+    interactingPortal = portal;
+    overlays.add('dungeon_confirm');
+  }
+
+  void _tryInteractPortalOrDoor() {
+    final portal = _nearbyDungeonPortal();
+    if (portal != null) {
+      _openDungeonPortalConfirm(portal);
+      return;
+    }
+    _tryInteractDoor();
+  }
+
+  void _handleDungeonDeathRecovery() {
+    _dungeonFlowState = DungeonFlowState.recovering;
+    final run = gameState.activeDungeonRun;
+    if (run != null) {
+      final result = run.failRun(lossRate: 0.3);
+      gameState.dungeonTokens += result.finalTokens;
+      _lastDungeonResult = result;
+      overlays.add('dungeon_result');
+    }
+    gameState.activeDungeonRun = null;
+    _runElapsedSeconds = 0;
+    gameState.worldMode = WorldMode.overworld;
+    _removeAllDungeonEntities();
+    gameWorld.children.whereType<MonsterComponent>().forEach((m) {
+      m.removeFromParent();
+    });
+
+    if (_savedOverworldTiles != null) {
+      worldManager.loadFromJson(_savedOverworldTiles!);
+      if (_savedPlayerPos != null) {
+        player.position = _savedPlayerPos!.clone();
+      } else {
+        player.respawnAtSurface();
+      }
+    } else {
+      worldManager.generate();
+      player.respawnAtSurface();
+    }
+    player.velocity.setZero();
+    gameState.activeShieldHits = 0;
+    _restoreSurfaceEntities();
+    _dungeonFlowState = DungeonFlowState.surface;
+  }
+
   TeleportDoor? _doorAt(int tx, int ty) {
+    if (gameState.inDungeon) return null;
     for (final door in doors) {
       final dx = (door.position.x / tileSize).floor();
       final dy = (door.position.y / tileSize).floor();
@@ -909,6 +1610,7 @@ class MiningGame extends FlameGame with TapCallbacks {
   }
 
   TeleportDoor? _nearbyDoor() {
+    if (gameState.inDungeon) return null;
     for (final door in doors) {
       if (player.center.distanceTo(door.center) < tileSize * 1.5) {
         return door;
@@ -961,13 +1663,18 @@ class MiningGame extends FlameGame with TapCallbacks {
 
   void closeDeath() => overlays.remove('death');
 
+  void closeDungeonResult() {
+    overlays.remove('dungeon_result');
+  }
+
   // ── Keyboard ──────────────────────────────────────────────────────────
 
   bool _handleKey(KeyEvent event) {
     if (!_loaded) return false;
 
     // ESC: close inventory, or toggle pause
-    if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.escape) {
+    if (event is KeyDownEvent &&
+        event.logicalKey == LogicalKeyboardKey.escape) {
       if (inventoryOpen) {
         closeInventory();
         return true;
@@ -1001,7 +1708,7 @@ class MiningGame extends FlameGame with TapCallbacks {
     if (event is KeyDownEvent) {
       final k = event.logicalKey;
       if (k == LogicalKeyboardKey.keyF) _placeFacing();
-      if (k == LogicalKeyboardKey.keyT) _tryInteractDoor();
+      if (k == LogicalKeyboardKey.keyT) _tryInteractPortalOrDoor();
 
       const digits = [
         LogicalKeyboardKey.digit1,

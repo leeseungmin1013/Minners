@@ -10,6 +10,10 @@ import 'ui/hotbar_overlay.dart';
 import 'ui/inventory_overlay.dart';
 import 'ui/death_overlay.dart';
 import 'ui/teleport_overlay.dart';
+import 'ui/dungeon_confirm_overlay.dart';
+import 'ui/dungeon_select_overlay.dart';
+import 'ui/dungeon_result_overlay.dart';
+
 import 'ui/pause_overlay.dart';
 import 'ui/main_menu.dart';
 
@@ -67,10 +71,7 @@ class _MiningAppState extends State<MiningApp> {
         backgroundColor: Colors.black,
         body: SafeArea(
           child: _screen == AppScreen.mainMenu
-              ? MainMenu(
-                  onNewGame: _startNewGame,
-                  onLoadGame: _loadGame,
-                )
+              ? MainMenu(onNewGame: _startNewGame, onLoadGame: _loadGame)
               : _buildGameView(),
         ),
       ),
@@ -98,10 +99,11 @@ class _MiningAppState extends State<MiningApp> {
           'inventory': (ctx, game) => InventoryOverlay(game: game),
           'death': (ctx, game) => DeathOverlay(game: game),
           'teleport': (ctx, game) => TeleportOverlay(game: game),
-          'pause': (ctx, game) => PauseOverlay(
-                game: game,
-                onQuitToMenu: _returnToMenu,
-              ),
+          'dungeon_confirm': (ctx, game) => DungeonConfirmOverlay(game: game),
+          'dungeon_select': (ctx, game) => DungeonSelectOverlay(game: game),
+          'dungeon_result': (ctx, game) => DungeonResultOverlay(game: game),
+          'pause': (ctx, game) =>
+              PauseOverlay(game: game, onQuitToMenu: _returnToMenu),
         },
         initialActiveOverlays: const ['hotbar'],
       ),

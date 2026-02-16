@@ -2,6 +2,7 @@ import 'dart:math';
 import 'dart:ui';
 
 import 'package:flame/components.dart';
+import 'package:flutter/animation.dart';
 
 import 'tile_data.dart';
 import 'mining_game.dart';
@@ -38,6 +39,7 @@ class PlayerComponent extends SpriteComponent
   final Sprite gearPickaxe;
   final Sprite gearDrill;
   final Sprite gearJetpack;
+  final Sprite gearSword;
 
   // Mining state (set by MiningGame each frame)
   bool isMining = false;
@@ -45,13 +47,20 @@ class PlayerComponent extends SpriteComponent
 
   // Gear animation state
   double _swingTimer = 0;
+  double _attackSwingTimer = 0;
+  double _slashFxTimer = 0;
+  double _damageFlashTimer = 0;
   bool _isThrusting = false;
   bool _showJetpack = false;
   final Paint _gearPaint = Paint();
+  final Paint _damageFlashPaint = Paint()..blendMode = BlendMode.plus;
 
   // Swing animation tuning (pickaxe)
   static const double _swingSpeed = 10.0;
   static const double _swingAmplitude = 0.6;
+  static const double _attackSwingDuration = 0.2;
+  static const double _slashFxDuration = 0.12;
+  static const double _damageFlashDuration = 0.11;
 
   // Drill vibration tuning
   static const double _drillVibrateSpeed = 45.0;
@@ -64,10 +73,10 @@ class PlayerComponent extends SpriteComponent
   /// Horizontal offset for legacy place-facing logic.
   int get facingH =>
       (_facingDir == FacingDir.left ||
-              _facingDir == FacingDir.upLeft ||
-              _facingDir == FacingDir.downLeft)
-          ? -1
-          : 1;
+          _facingDir == FacingDir.upLeft ||
+          _facingDir == FacingDir.downLeft)
+      ? -1
+      : 1;
 
   static const double moveSpeed = 160;
   static const double gravity = 900;
@@ -95,33 +104,63 @@ class PlayerComponent extends SpriteComponent
     required this.gearPickaxe,
     required this.gearDrill,
     required this.gearJetpack,
+    required this.gearSword,
   }) : super(
-          position: position,
-          size: Vector2.all(24),
-          sprite: null,
-          paint: Paint()..color = const Color(0xFFFFFFFF),
-        ) {
+         position: position,
+         size: Vector2.all(24),
+         sprite: null,
+         paint: Paint()..color = const Color(0xFFFFFFFF),
+       ) {
     _updateSpriteForDir();
+  }
+
+  void swingTool() {
+    _swingTimer = 1.0;
+  }
+
+  void triggerAttackSwing() {
+    _attackSwingTimer = _attackSwingDuration;
+    _slashFxTimer = _slashFxDuration;
+  }
+
+  void triggerDamageFlash() {
+    _damageFlashTimer = _damageFlashDuration;
   }
 
   void _updateSpriteForDir() {
     switch (_facingDir) {
       case FacingDir.right:
-        sprite = spriteRight; _flipX = false; _flipY = false;
+        sprite = spriteRight;
+        _flipX = false;
+        _flipY = false;
       case FacingDir.left:
-        sprite = spriteRight; _flipX = true; _flipY = false;
+        sprite = spriteRight;
+        _flipX = true;
+        _flipY = false;
       case FacingDir.down:
-        sprite = spriteFront; _flipX = false; _flipY = false;
+        sprite = spriteFront;
+        _flipX = false;
+        _flipY = false;
       case FacingDir.up:
-        sprite = spriteUp; _flipX = false; _flipY = false;
+        sprite = spriteUp;
+        _flipX = false;
+        _flipY = false;
       case FacingDir.upRight:
-        sprite = spriteUpRight; _flipX = false; _flipY = false;
+        sprite = spriteUpRight;
+        _flipX = false;
+        _flipY = false;
       case FacingDir.upLeft:
-        sprite = spriteUpRight; _flipX = true; _flipY = false;
+        sprite = spriteUpRight;
+        _flipX = true;
+        _flipY = false;
       case FacingDir.downRight:
-        sprite = spriteUpRight; _flipX = false; _flipY = true;
+        sprite = spriteUpRight;
+        _flipX = false;
+        _flipY = true;
       case FacingDir.downLeft:
-        sprite = spriteUpRight; _flipX = true; _flipY = true;
+        sprite = spriteUpRight;
+        _flipX = true;
+        _flipY = true;
     }
   }
 
@@ -152,11 +191,11 @@ class PlayerComponent extends SpriteComponent
     switch (_facingDir) {
       case FacingDir.right:
       case FacingDir.left:
-        return (-2, 4);
+        return (-12, 0);
       case FacingDir.down:
         return (9, -2);
       case FacingDir.up:
-        return (9, 14);
+        return (0, 14);
       case FacingDir.upRight:
       case FacingDir.upLeft:
         return (0, 8);
@@ -185,16 +224,23 @@ class PlayerComponent extends SpriteComponent
       canvas.scale(1, -1);
     }
 
-    // 1. Jetpack behind player (draw first when enabled)
+    // 1. Player body
+    sprite?.render(canvas, size: size, overridePaint: paint);
+    if (_damageFlashTimer > 0) {
+      final alpha = (_damageFlashTimer / _damageFlashDuration).clamp(0.0, 1.0);
+      _damageFlashPaint.color = Color.fromRGBO(255, 255, 255, 0.22 + (alpha * 0.58));
+      sprite?.render(canvas, size: size, overridePaint: _damageFlashPaint);
+    }
+
+    // 2. Jetpack and flame (draw after body so it isn't hidden)
     if (_showJetpack) {
       _renderJetpack(canvas);
     }
 
-    // 2. Player body
-    sprite?.render(canvas, size: size, overridePaint: paint);
-
     // 3. Mining tool in front of player (draw last)
-    if (isMining) {
+    if (game.gameState.isCombatMode) {
+      _renderSword(canvas);
+    } else if (isMining) {
       if (_isDrill) {
         _renderDrill(canvas);
       } else {
@@ -208,12 +254,18 @@ class PlayerComponent extends SpriteComponent
   void _renderJetpack(Canvas canvas) {
     final (ox, oy) = _jetpackOffset();
 
-    // Thrust flame effect when actively thrusting
+    const jetpackW = 24.0;
+    const jetpackH = 32.0;
+
+    // Thrust flame effect when actively thrusting (just below jetpack)
     if (_isThrusting) {
       final flamePaint = Paint()..color = const Color(0xCCFF8800);
       final flameH = 4.0 + sin(_swingTimer * 30) * 2.0;
+      final flameW = 10.0;
+      final flameX = ox + (jetpackW - flameW) / 2;
+      final flameY = oy + jetpackH;
       canvas.drawRect(
-        Rect.fromLTWH(ox + 1, oy + 14, 6, flameH),
+        Rect.fromLTWH(flameX, flameY, flameW, flameH),
         flamePaint,
       );
     }
@@ -221,7 +273,7 @@ class PlayerComponent extends SpriteComponent
     gearJetpack.render(
       canvas,
       position: Vector2(ox, oy),
-      size: Vector2(8, 14),
+      size: Vector2(jetpackW, jetpackH),
     );
   }
 
@@ -249,6 +301,66 @@ class PlayerComponent extends SpriteComponent
     canvas.restore();
   }
 
+  void _renderSword(Canvas canvas) {
+    final (ox, oy, baseAngle) = _toolTransform();
+
+    double swingAngle = -0.35;
+    var attackProgress = 0.0;
+    if (_attackSwingTimer > 0) {
+      attackProgress = 1.0 - (_attackSwingTimer / _attackSwingDuration);
+      final eased = Curves.easeOut.transform(attackProgress.clamp(0.0, 1.0));
+      swingAngle = lerpDouble(-1.7, 1.5, eased) ?? swingAngle;
+    }
+
+    final totalAngle = baseAngle + swingAngle;
+
+    final tierColor = pickaxeSpecs[miningTier]!.color;
+    _gearPaint.colorFilter = ColorFilter.mode(tierColor, BlendMode.modulate);
+
+    const double gw = 28;
+    const double gh = 28;
+
+    canvas.save();
+    canvas.translate(ox, oy);
+    canvas.rotate(totalAngle);
+    canvas.translate(-gw / 2, -gh + 7);
+
+    gearSword.render(canvas, size: Vector2(gw, gh), overridePaint: _gearPaint);
+    canvas.restore();
+
+    if (_slashFxTimer > 0) {
+      _renderSwordSlashEffect(canvas, ox, oy, attackProgress);
+    }
+  }
+
+  void _renderSwordSlashEffect(
+    Canvas canvas,
+    double ox,
+    double oy,
+    double attackProgress,
+  ) {
+    final alpha = (_slashFxTimer / _slashFxDuration).clamp(0.0, 1.0);
+    final radius = 17.0 + attackProgress * 11.0;
+    final start = -1.9 + attackProgress * 0.4;
+    final sweep = 1.5 + attackProgress * 0.7;
+
+    final slashPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = 3.5 + alpha * 2.0
+      ..color = Color.fromRGBO(255, 245, 180, 0.25 + alpha * 0.55);
+
+    final corePaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = 1.6
+      ..color = Color.fromRGBO(255, 255, 255, 0.2 + alpha * 0.65);
+
+    final rect = Rect.fromCircle(center: Offset(ox, oy), radius: radius);
+    canvas.drawArc(rect, start, sweep, false, slashPaint);
+    canvas.drawArc(rect, start + 0.05, sweep - 0.1, false, corePaint);
+  }
+
   void _renderDrill(Canvas canvas) {
     final (ox, oy, baseAngle) = _toolTransform();
 
@@ -256,8 +368,10 @@ class PlayerComponent extends SpriteComponent
     final angle = _flipX ? -baseAngle : baseAngle;
 
     // Drill vibration: rapid oscillation along drill axis and perpendicular
-    final vibrateAlong = sin(_swingTimer * _drillVibrateSpeed) * _drillVibrateAmp;
-    final vibratePerp = sin(_swingTimer * _drillVibratePerpSpeed) * _drillVibratePerpAmp;
+    final vibrateAlong =
+        sin(_swingTimer * _drillVibrateSpeed) * _drillVibrateAmp;
+    final vibratePerp =
+        sin(_swingTimer * _drillVibratePerpSpeed) * _drillVibratePerpAmp;
 
     final tierColor = pickaxeSpecs[miningTier]!.color;
     _gearPaint.colorFilter = ColorFilter.mode(tierColor, BlendMode.modulate);
@@ -319,8 +433,10 @@ class PlayerComponent extends SpriteComponent
         // Jetpack – only after grace period so normal jumps don't burn fuel
         velocity.y -= jetThrust * dt;
         velocity.y = velocity.y.clamp(-jetMaxUp, double.infinity);
-        gs.jetpackFuel =
-            (gs.jetpackFuel - jetFuelRate * dt).clamp(0, gs.jetpackMaxFuel);
+        gs.jetpackFuel = (gs.jetpackFuel - jetFuelRate * dt).clamp(
+          0,
+          gs.jetpackMaxFuel,
+        );
 
         // Visual: lighter colour while thrusting
         paint.color = const Color(0xFFFFAA44);
@@ -328,7 +444,8 @@ class PlayerComponent extends SpriteComponent
     }
 
     // Track thrusting state for gear rendering
-    _isThrusting = jumpHeld &&
+    _isThrusting =
+        jumpHeld &&
         !_onGround &&
         gs.hasJetpack &&
         gs.jetpackEnabled &&
@@ -348,6 +465,16 @@ class PlayerComponent extends SpriteComponent
       _swingTimer += dt;
     } else {
       _swingTimer = 0;
+    }
+    if (_attackSwingTimer > 0) {
+      _attackSwingTimer = (_attackSwingTimer - dt).clamp(0.0, _attackSwingDuration);
+    }
+    if (_slashFxTimer > 0) {
+      _slashFxTimer = (_slashFxTimer - dt).clamp(0.0, _slashFxDuration);
+    }
+    if (_damageFlashTimer > 0) {
+      _damageFlashTimer =
+          (_damageFlashTimer - dt).clamp(0.0, _damageFlashDuration);
     }
 
     _step(dt, horizontal: true);
@@ -377,7 +504,11 @@ class PlayerComponent extends SpriteComponent
       for (var tx = minX; tx <= maxX; tx++) {
         if (!game.worldManager.isSolid(tx, ty)) continue;
         final tr = Rect.fromLTWH(
-            tx * tileSize, ty * tileSize, tileSize, tileSize);
+          tx * tileSize,
+          ty * tileSize,
+          tileSize,
+          tileSize,
+        );
         if (!_rect.overlaps(tr)) continue;
 
         if (horizontal) {
@@ -410,8 +541,8 @@ class PlayerComponent extends SpriteComponent
     final landingSpeed = velocity.y;
     _wasFalling = false;
     if (landingSpeed > fallDmgSpeedThreshold) {
-      final dmg =
-          ((landingSpeed - fallDmgSpeedThreshold) * fallDmgMultiplier).round();
+      final dmg = ((landingSpeed - fallDmgSpeedThreshold) * fallDmgMultiplier)
+          .round();
       if (dmg > 0) game.gameState.takeDamage(dmg);
     }
   }

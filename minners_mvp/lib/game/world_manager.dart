@@ -1,8 +1,34 @@
+import 'dart:ui';
+
 import 'package:flame/components.dart';
 
 import 'save_data.dart';
 import 'tile_data.dart';
 import 'tile_component.dart';
+
+class DungeonConfig {
+  final int startX;
+  final int startY;
+  final int roomWidth;
+  final int roomHeight;
+  final int seed;
+  final double obstacleChance;
+  final String themeId;
+  final List<Vector2> spawnPoints;
+  final Rect? waveAreaBounds;
+
+  const DungeonConfig({
+    this.startX = 2,
+    this.startY = 5,
+    this.roomWidth = 15,
+    this.roomHeight = 10,
+    this.seed = 0,
+    this.obstacleChance = 0.0,
+    this.themeId = 'default',
+    this.spawnPoints = const [],
+    this.waveAreaBounds,
+  });
+}
 
 class WorldManager {
   late List<List<TileState?>> tiles;
@@ -42,6 +68,46 @@ class WorldManager {
 
   void _set(int x, int y, TileType type) {
     tiles[y][x] = TileState(type, tileSpecs[type]!.maxHp.toDouble());
+  }
+
+  /// Generate a dungeon room from [config] surrounded by Bedrock.
+  void generateDungeon([DungeonConfig config = const DungeonConfig()]) {
+    // Resize tiles to small dungeon size if needed, or just clear and use subset
+    // Simpler: Reuse global world size but only fill a small corner,
+    // or better: Reallocate `tiles` to match dungeon size.
+    // Since `worldWidth` is const 80, we might have issues if we shrink `tiles`.
+    // Let's stick to using the existing grid but clearing it and building a room at 0,0.
+
+    // Clear everything
+    for (var y = 0; y < worldHeight; y++) {
+      for (var x = 0; x < worldWidth; x++) {
+        tiles[y][x] = null;
+        final key = y * worldWidth + x;
+        _visible.remove(key)?.removeFromParent();
+      }
+    }
+
+    final startX = config.startX.clamp(1, worldWidth - 4);
+    final startY = config.startY.clamp(1, worldHeight - 4);
+    final roomW = config.roomWidth.clamp(5, worldWidth - startX - 2);
+    final roomH = config.roomHeight.clamp(4, worldHeight - startY - 2);
+
+    for (var y = startY; y < startY + roomH + 2; y++) {
+      for (var x = startX; x < startX + roomW + 2; x++) {
+        if (x == startX ||
+            x == startX + roomW + 1 ||
+            y == startY ||
+            y == startY + roomH + 1) {
+          _set(x, y, TileType.bedrock);
+        } else {
+          // Optional interior obstacles for future waves/biomes.
+          if (config.obstacleChance > 0 &&
+              tileNoise(x, y, config.seed) < config.obstacleChance) {
+            _set(x, y, TileType.stone);
+          }
+        }
+      }
+    }
   }
 
   TileType _pickType(int x, int y) {
@@ -101,16 +167,22 @@ class WorldManager {
     final halfW = viewSize.x / 2;
     final halfH = viewSize.y / 2;
 
-    final lx =
-        ((cameraCenter.x - halfW) / tileSize).floor().clamp(0, worldWidth - 1);
-    final rx =
-        ((cameraCenter.x + halfW) / tileSize).ceil().clamp(0, worldWidth - 1);
-    final ty = ((cameraCenter.y - halfH) / tileSize)
-        .floor()
-        .clamp(0, worldHeight - 1);
-    final by = ((cameraCenter.y + halfH) / tileSize)
-        .ceil()
-        .clamp(0, worldHeight - 1);
+    final lx = ((cameraCenter.x - halfW) / tileSize).floor().clamp(
+      0,
+      worldWidth - 1,
+    );
+    final rx = ((cameraCenter.x + halfW) / tileSize).ceil().clamp(
+      0,
+      worldWidth - 1,
+    );
+    final ty = ((cameraCenter.y - halfH) / tileSize).floor().clamp(
+      0,
+      worldHeight - 1,
+    );
+    final by = ((cameraCenter.y + halfH) / tileSize).ceil().clamp(
+      0,
+      worldHeight - 1,
+    );
 
     final minX = (lx - buf).clamp(0, worldWidth - 1);
     final maxX = (rx + buf).clamp(0, worldWidth - 1);
